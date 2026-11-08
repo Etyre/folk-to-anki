@@ -23,7 +23,7 @@ touches notes it created itself.
    field, else inferred: name matches a current member of Congress → Congressperson; member of
    `FOLK_DC_GROUP` or a `senate.gov`/`house.gov` email → DC staffer; otherwise Networking.
 3. Facts come from folk (fields **Party**, **Office** falling back to the primary company,
-   **Deal** falling back to description then "job title at company", **Photo URL**) and, for
+   **Deal** falling back to description then "job title at company"; a Networking person with neither Deal nor description is warned about in the log, since the fallback is thin for independents, **Photo URL**) and, for
    Congress, from the public `@unitedstates` datasets: state, party, chamber, chair / ranking
    member of full committees, and the official portrait. Photo order: Congress portrait, folk
    Photo URL, `PHOTOS_DIR/<folk id>.jpg`, the picture folk attached to the person in a past

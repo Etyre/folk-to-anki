@@ -141,6 +141,10 @@ def gather(cfg, folk, congress, state=None, finder=None):
                "deal": f.get("Deal") or p.get("description") or
                        " at ".join(x for x in (p.get("jobTitle"), company) if x),
                "photo_url": f.get("Photo URL") or None, "folk": p}
+        # "Job title at company" is a last resort; for independents it is just a title or nothing,
+        # so say so in the log and let Eli fill in the Deal field (or description) in folk.
+        if kind == "Networking" and not (f.get("Deal") or p.get("description")):
+            log.warning("%s: no Deal or description in folk; card back says %r", name, rec["deal"] or "(nothing)")
         if kind == "Congressperson":
             if not leg:
                 log.warning("%s is marked Congressperson but is not in legislators-current; skipping", name)
