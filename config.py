@@ -20,6 +20,9 @@ DEFAULTS = {
     "DECK_DC": "Daily review::*-DC networking",
     "DECK_NETWORKING": "Daily review::*-Networking",
     "PHOTOS_DIR": str(APP_SUPPORT / "photos"),
+    "PHOTO_SEARCH": "on",
+    "PHOTO_SEARCH_BUDGET_USD": "1.0",
+    "PHOTO_SEARCH_RETRY_DAYS": "60",
 }
 
 

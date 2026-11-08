@@ -27,12 +27,24 @@ touches notes it created itself.
    Congress, from the public `@unitedstates` datasets: state, party, chamber, chair / ranking
    member of full committees, and the official portrait. Photo order: Congress portrait, folk
    Photo URL, `PHOTOS_DIR/<folk id>.jpg`, the picture folk attached to the person in a past
-   calendar or email interaction. No photo means no face card, with a warning in the log.
-4. `cards.py` turns a person into notes per template (see the docstring there). Every note has a
+   calendar or email interaction, and finally a web search by a Claude agent (next point). No
+   photo means no face card, with a warning in the log.
+4. **Photo agent** (`photo_finder.py`, Claude Agent SDK, model `claude-opus-5-5`). It runs through
+   the Claude Code login on this Mac, so there is no API key to manage; each search is a short
+   agent session (about 7 turns and $0.15 in the trial run). The agent has WebSearch, WebFetch,
+   and three in-process tools: `page_images` (lists a page's images with alt text), `view_image`
+   (shows it the picture so it can check the face is the right person) and the shared
+   `contact_eli`. It answers with a structured `{url, source_page, confidence, reason}`; low
+   confidence is discarded, the URL is downloaded to prove it is an image, and a hit is written
+   to the person's **Photo URL** field in folk so it is visible and overridable in the CRM.
+   Each person is searched once; a miss is retried after `PHOTO_SEARCH_RETRY_DAYS`. The system
+   prompt starts with the shared preamble; a `contact_eli` call or `@ELI:` line is recorded in
+   the LLM inbox and stops the run (exit code 2).
+5. `cards.py` turns a person into notes per template (see the docstring there). Every note has a
    `Key` field `<folk person id>|<kind>`; `anki.py` searches Anki for that key and adds, updates
    or leaves the note alone. Photos go into Anki's media folder as `folk-<id>.jpg`. Note types
    `Folk Basic` and `Folk Cloze` and the decks are created on first run. Nothing is ever deleted.
-5. `run --daily` does both steps and records a success stamp so the later launchd slots are no-ops.
+6. `run --daily` does both steps and records a success stamp so the later launchd slots are no-ops.
 
 ## Files
 
@@ -43,15 +55,17 @@ touches notes it created itself.
 | `calendar_feed.py` | iCal fetch, minimal VEVENT parse, met / upcoming contact extraction |
 | `congress.py` | Congress name matching, facts and photo from `@unitedstates` data (cached daily) |
 | `cards.py` | the templates as code: person → notes |
+| `photo_finder.py` | Claude agent that finds a headshot; `photo_finder.py "Name" "context"` tries it by hand |
 | `anki.py` | AnkiConnect: note types, decks, media, add-or-update by key |
 | `config.py` | reads `config.env` |
+| `.venv/` | Python with `anthropic` and `claude-agent-sdk` (untracked; see Common tasks) |
 | `tests/fixtures/` | fake folk people and a fake calendar for `test` |
 | `com.elityre.folk-to-anki.plist`, `install.sh` | launchd agent (07:30, 12:30, 18:30) and installer |
 
 ## Runtime locations
 
 - Config: `config.env` in this folder (untracked; template `config.env.example`).
-- State: `~/Library/Application Support/FolkToAnki/state.json` (uploaded photos, last success),
+- State: `~/Library/Application Support/FolkToAnki/state.json` (uploaded photos, photo searches, last success),
   `not-in-folk.txt` (calendar contacts without a folk record), `congress/` (data cache),
   `photos/` (manual photos named `<folk person id>.jpg`).
 - Log: `~/Library/Logs/folk-to-anki.log` (launchd's own stdout in `folk-to-anki.launchd.log`).
@@ -61,6 +75,7 @@ touches notes it created itself.
 
 ```bash
 cd ~/Documents/agent-coding/folk-to-anki
+/opt/homebrew/bin/python3 -m venv .venv && .venv/bin/pip install claude-agent-sdk   # once
 cp config.env.example config.env            # then fill in FOLK_API_KEY and CALENDAR_ICS_URLS
 ./folk_to_anki.py setup                     # list folk groups, show which custom fields are missing
 ./folk_to_anki.py setup --create-fields     # create them on FOLK_GROUP
@@ -69,10 +84,13 @@ cp config.env.example config.env            # then fill in FOLK_API_KEY and CALE
 ./folk_to_anki.py run                       # do both for real
 ./folk_to_anki.py test                      # end to end with fixtures into deck "Folk to Anki test"
 ./folk_to_anki.py test --cleanup            # delete that test deck
+.venv/bin/python photo_finder.py "Jane Doe" "legislative assistant, Office of Sen. X"   # try the photo agent
 ./install.sh                                # install / restart the launchd agent
 launchctl bootout gui/$(id -u)/com.elityre.folk-to-anki   # stop it
 tail -f ~/Library/Logs/folk-to-anki.log
 ```
+
+`PHOTO_SEARCH=off` in `config.env` disables the agent; `cards --dry-run` never runs it.
 
 Hand-picking people: set **Anki card** in folk to `Congressperson`, `DC staffer` or `Networking`
 to card someone the calendar never saw, or `Skip` to never card them. Add **Photo URL** (any
@@ -85,6 +103,8 @@ pictures.
 - folk API access needs the Premium plan; the key is made under Settings → API keys. The key
   acts as Eli in the shared Palisade workspace, so field writes are visible to colleagues.
 - Google Calendar → Settings → the calendar → "Secret address in iCal format" for each feed.
+- The photo agent needs the `claude` CLI (`~/.local/bin/claude`) logged in; its usage is billed to
+  that Claude account. The launchd plist puts `~/.local/bin` on PATH for this reason.
 
 ## Gotchas learned
 
@@ -97,4 +117,10 @@ pictures.
   group they already belong to (`folk_api.update_person` does).
 - folk rate limit is 20 requests per 2 seconds; the client sleeps on 429. `all_people()` pages
   through the whole workspace once per `flag` run.
-- `/usr/bin/python3` under launchd cannot read `~/Documents`; the plist uses Homebrew's python.
+- `/usr/bin/python3` under launchd cannot read `~/Documents`; the plist uses the project `.venv`
+  (built on Homebrew python), which can.
+- In-process Agent SDK tools return MCP content blocks; an image is
+  `{"type": "image", "data": <base64>, "mimeType": "image/jpeg"}` and the model really sees it.
+  Keep images under about 3.5 MB (the API limit is 5 MB after decoding).
+- `max_budget_usd` on the agent is an estimate that can overshoot slightly; the default $1 per
+  person is generous, the trial cost $0.14.

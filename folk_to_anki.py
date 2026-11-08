@@ -1,4 +1,4 @@
-#!/opt/homebrew/bin/python3
+#!/Users/elityre/Documents/agent-coding/folk-to-anki/.venv/bin/python
 """folk-to-anki: flag in folk (Palisade's CRM) the people Eli has met or is about to meet,
 read from Google Calendar, then build Anki cards for them from his networking templates.
 
@@ -25,6 +25,7 @@ import cards
 import config
 import congress as congress_mod
 import folk_api
+import photo_finder
 
 log = logging.getLogger("folk-to-anki")
 STATE = config.APP_SUPPORT / "state.json"
@@ -111,7 +112,8 @@ def flag(cfg, folk, dry_run):
 
 
 # --- step 2: folk -> Anki ----------------------------------------------------------------------
-def gather(cfg, folk, congress):
+def gather(cfg, folk, congress, state=None, finder=None):
+    state = state if state is not None else {}
     """-> list of plain person dicts that cards.build understands."""
     group = folk.group_by_name(cfg["FOLK_GROUP"])
     dc_group = folk.group_by_name(cfg["FOLK_DC_GROUP"]) if cfg["FOLK_DC_GROUP"] else None
@@ -149,11 +151,50 @@ def gather(cfg, folk, congress):
         if not rec["photo_url"]:
             local = next((x for x in Path(cfg["PHOTOS_DIR"]).glob(p["id"] + ".*")), None)
             rec["photo_url"] = local.as_uri() if local else folk.participant_picture(p)
+        if not rec["photo_url"] and finder is not None:
+            rec["photo_url"] = search_photo(cfg, folk, finder, state, group["id"], rec)
         if not rec["photo_url"]:
             log.warning("no photo for %s (%s): add a Photo URL in folk or %s/%s.jpg; skipping the face card",
                         name, kind, cfg["PHOTOS_DIR"], p["id"])
         out.append(rec)
     return out
+
+
+def search_photo(cfg, folk, finder, state, group_id, rec):
+    """Ask the photo agent once per person (re-asking after PHOTO_SEARCH_RETRY_DAYS when it found
+    nothing). A verified hit is written to folk's Photo URL field so it shows in the CRM and can be
+    overridden there. Raises photo_finder.ContactRequested if the model wants to talk to Eli."""
+    searched = state.setdefault("photo_search", {})
+    prev = searched.get(rec["id"])
+    today = dt.date.today()
+    if prev and (prev.get("url") or (today - dt.date.fromisoformat(prev["date"])).days < int(cfg["PHOTO_SEARCH_RETRY_DAYS"])):
+        return prev.get("url")
+    p = rec["folk"]
+    context = "; ".join(x for x in (
+        f"card type {rec['kind']}", f"job title {p.get('jobTitle')}" if p.get("jobTitle") else "",
+        f"organisation {rec['office']}" if rec.get("office") else "",
+        f"party {rec['party']}" if rec.get("party") else "",
+        f"email domain {p['emails'][0].split('@')[1]}" if p.get("emails") else "",
+        f"notes: {p.get('description')}" if p.get("description") else "") if x)
+    log.info("photo search: %s (%s)", rec["name"], context)
+    res = finder.find(rec["name"], context)
+    url = (res or {}).get("url")
+    if url and res.get("confidence") == "low":
+        log.info("photo search: low confidence for %s, not using %s (%s)", rec["name"], url, res.get("reason"))
+        url = None
+    if url and not photo_finder.verify_image(url):
+        url = None
+    searched[rec["id"]] = {"date": today.isoformat(), "url": url, "result": res}
+    save_state(state)
+    if url:
+        log.info("photo search: %s -> %s (%s)", rec["name"], url, res.get("reason"))
+        try:
+            folk.update_person(p, group_id, {"Photo URL": url})
+        except folk_api.FolkError as e:
+            log.error("could not write Photo URL for %s to folk: %s", rec["name"], e)
+    else:
+        log.info("photo search: nothing usable for %s (%s)", rec["name"], (res or {}).get("reason"))
+    return url
 
 
 def fetch_photo(url):
@@ -164,8 +205,8 @@ def fetch_photo(url):
         return r.read()
 
 
-def make_cards(cfg, folk, congress, anki, decks, dry_run, state):
-    people = gather(cfg, folk, congress)
+def make_cards(cfg, folk, congress, anki, decks, dry_run, state, finder=None):
+    people = gather(cfg, folk, congress, state, finder)
     log.info("cards: %d people to card", len(people))
     counts = {"added": 0, "updated": 0, "unchanged": 0, "failed": 0}
     if not dry_run:
@@ -297,7 +338,10 @@ def main(argv=None):
     if a.command in ("cards", "run"):
         congress = congress_mod.Congress(config.APP_SUPPORT / "congress")
         decks = {"dc": cfg["DECK_DC"], "networking": cfg["DECK_NETWORKING"]}
-        counts = make_cards(cfg, folk, congress, anki, decks, a.dry_run, state)
+        finder = None
+        if cfg["PHOTO_SEARCH"].lower() in ("on", "true", "yes", "1") and not a.dry_run:
+            finder = photo_finder.Finder(budget_usd=float(cfg["PHOTO_SEARCH_BUDGET_USD"]))
+        counts = make_cards(cfg, folk, congress, anki, decks, a.dry_run, state, finder)
         if not a.dry_run and counts["failed"] == 0 and a.command == "run":
             state["last_success"] = today
             save_state(state)
@@ -306,6 +350,9 @@ def main(argv=None):
 if __name__ == "__main__":
     try:
         main()
+    except photo_finder.ContactRequested as e:
+        log.error("the photo agent asked to talk to Eli; stopping this run (see llm-inbox): %s", e)
+        sys.exit(2)
     except (folk_api.FolkError, anki_mod.AnkiError, SystemExit) as e:
         if str(e):
             log.error("%s", e)

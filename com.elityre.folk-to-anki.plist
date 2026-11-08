@@ -6,7 +6,7 @@
     <string>com.elityre.folk-to-anki</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/opt/homebrew/bin/python3</string>
+        <string>/Users/elityre/Documents/agent-coding/folk-to-anki/.venv/bin/python</string>
         <string>/Users/elityre/Documents/agent-coding/folk-to-anki/folk_to_anki.py</string>
         <string>run</string>
         <string>--daily</string>
@@ -21,6 +21,9 @@
         <dict><key>Hour</key><integer>12</integer><key>Minute</key><integer>30</integer></dict>
         <dict><key>Hour</key><integer>18</integer><key>Minute</key><integer>30</integer></dict>
     </array>
+    <!-- The photo agent spawns the `claude` CLI, which lives in ~/.local/bin. -->
+    <key>EnvironmentVariables</key>
+    <dict><key>PATH</key><string>/Users/elityre/.local/bin:/opt/homebrew/bin:/usr/bin:/bin</string></dict>
     <key>RunAtLoad</key>
     <true/>
     <key>StandardOutPath</key>
