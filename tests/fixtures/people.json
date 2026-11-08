@@ -1,0 +1,19 @@
+[
+ {"id": "per_test0000000000000000000000000000001", "fullName": "Richard Blumenthal", "firstName": "Richard", "lastName": "Blumenthal",
+  "emails": ["blumenthal@senate.example"], "companies": [], "groups": [{"id": "grp_test0000000000000000000000000000000", "name": "Networking"}],
+  "customFieldValues": {"grp_test0000000000000000000000000000000": {"Meeting status": "Met"}}},
+ {"id": "per_test0000000000000000000000000000002", "fullName": "Sam Staffer", "firstName": "Sam", "lastName": "Staffer",
+  "emails": ["staffer@senate.example"], "jobTitle": "Legislative Assistant", "companies": [{"id": "cmp_x", "name": "Office of Sen. Blumenthal"}],
+  "groups": [{"id": "grp_test0000000000000000000000000000000", "name": "Networking"}],
+  "customFieldValues": {"grp_test0000000000000000000000000000000": {"Meeting status": "Planning to meet", "Anki card": "DC staffer", "Party": "Democrat",
+    "Photo URL": "https://unitedstates.github.io/images/congress/225x275/M000355.jpg"}}},
+ {"id": "per_test0000000000000000000000000000003", "fullName": "Nina Networker", "firstName": "Nina", "lastName": "Networker",
+  "emails": ["nina@think.example"], "jobTitle": "Policy fellow", "companies": [{"id": "cmp_y", "name": "Example Institute"}],
+  "groups": [{"id": "grp_test0000000000000000000000000000000", "name": "Networking"}],
+  "customFieldValues": {"grp_test0000000000000000000000000000000": {"Meeting status": "Met",
+    "Photo URL": "https://unitedstates.github.io/images/congress/225x275/W000817.jpg"}}},
+ {"id": "per_test0000000000000000000000000000004", "fullName": "Skipped Person", "emails": ["skip@x.example"], "groups": [],
+  "customFieldValues": {"grp_test0000000000000000000000000000000": {"Meeting status": "Met", "Anki card": "Skip"}}},
+ {"id": "per_test0000000000000000000000000000005", "fullName": "Never Met", "emails": ["never@x.example"], "groups": [],
+  "customFieldValues": {"grp_test0000000000000000000000000000000": {}}}
+]

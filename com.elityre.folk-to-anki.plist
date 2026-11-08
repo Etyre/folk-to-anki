@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.elityre.folk-to-anki</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/bin/python3</string>
+        <string>/Users/elityre/Documents/agent-coding/folk-to-anki/folk_to_anki.py</string>
+        <string>run</string>
+        <string>--daily</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/elityre/Documents/agent-coding/folk-to-anki</string>
+    <!-- Several slots a day; --daily makes every slot after the first success a no-op,
+         so the later slots only matter when Anki was closed earlier. -->
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict><key>Hour</key><integer>7</integer><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Hour</key><integer>12</integer><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Hour</key><integer>18</integer><key>Minute</key><integer>30</integer></dict>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/Users/elityre/Library/Logs/folk-to-anki.launchd.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/elityre/Library/Logs/folk-to-anki.launchd.log</string>
+</dict>
+</plist>
