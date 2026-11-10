@@ -124,3 +124,8 @@ pictures.
   Keep images under about 3.5 MB (the API limit is 5 MB after decoding).
 - `max_budget_usd` on the agent is an estimate that can overshoot slightly; the default $1 per
   person is generous, the trial cost $0.14.
+- The shared confirm step for `contact_eli` (`llm_contact.with_confirm`, see `../shared/README.md`) is not used
+  here (checked 2026-11-10). It needs a second request to the same model with a forced tool choice, and the photo
+  agent runs inside a Claude Agent SDK session: `ClaudeAgentOptions` has no `tool_choice`, the session's message
+  list is not available to replay, and there is no API key for a direct call. A `contact_eli` call is therefore
+  always sent to Eli at once, which is the safe default.
