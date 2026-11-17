@@ -2,7 +2,7 @@
  "_comment": "Who sits in the next Congress, for member cards made before it convenes. Filled in by hand from election results; the public @unitedstates data only describes the sitting Congress. Ignored from 'starts' on, when that data takes over. Member cards are held until 'verified' is set. 'departing' lists sitting members of either chamber who will not be in it (retired, defeated, or left for another office). 'roles' is null until that chamber's leadership for the new Congress is known, then {name: [titles]}; a title ending in ' (expected)' counts for the ranking but gets no card until the vote has happened (then remove the suffix).",
  "congress": 120,
  "starts": "2027-01-03",
- "verified": "2026-11-17: November 3 results as reported by 16 Nov (about 98% of House races declared; Alaska Senate uncalled, Dan Sullivan left in). Democrats won both chambers. Senate Democratic and House Democratic leadership votes had not happened yet; the House speaker vote is on 3 Jan.",
+ "verified": "2026-11-17: November 3 results as reported by 16 Nov (about 98% of House races declared; Alaska Senate uncalled, Dan Sullivan left in). Democrats won both chambers. Senate Democratic and House Democratic leadership votes had not happened yet; the House speaker vote is on 3 Jan. Updated the same day from the roles agent's first run: Amy Klobuchar leaves the Senate (elected governor of Minnesota); unsourced minor conference posts removed.",
  "sources": [
   "https://en.wikipedia.org/wiki/2026_United_States_Senate_elections",
   "https://en.wikipedia.org/wiki/2026_United_States_House_of_Representatives_elections",
@@ -129,7 +129,8 @@
   "Gregory Murphy",
   "Robert Bresnahan",
   "Robert Wittman",
-  "Jennifer Kiggans"
+  "Jennifer Kiggans",
+  "Amy Klobuchar"
  ],
  "from_house": [
   "Barry Moore",
@@ -165,24 +166,6 @@
    ],
    "James Lankford": [
     "Senate Republican Conference Vice Chair (expected)"
-   ],
-   "Amy Klobuchar": [
-    "Senate Democratic Steering Committee Chair (expected)"
-   ],
-   "Mark Warner": [
-    "Senate Democratic Conference Vice Chair (expected)"
-   ],
-   "Elizabeth Warren": [
-    "Senate Democratic Conference Vice Chair (expected)"
-   ],
-   "Tammy Baldwin": [
-    "Senate Democratic Conference Secretary (expected)"
-   ],
-   "Cory Booker": [
-    "Senate Democratic Strategic Communications Committee Chair (expected)"
-   ],
-   "Bernard Sanders": [
-    "Senate Democratic Outreach Chair (expected)"
    ]
   }
  },
@@ -206,9 +189,6 @@
    ],
    "Jim Jordan": [
     "House Minority Leader"
-   ],
-   "Steve Scalise": [
-    "House Minority Whip (expected)"
    ],
    "Tom Emmer": [
     "House Republican leadership, post unconfirmed (expected)"

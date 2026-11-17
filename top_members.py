@@ -70,6 +70,11 @@ def load_next(path, congress, roles_path=None, today=None):
             for old in [k for k in base if leg and congress.match(k) is leg]:
                 del base[old]                       # same person under another spelling
             base[name] = [i["title"] + ("" if i["status"] == "confirmed" else EXPECTED) for i in items]
+        # a post the agent has placed is taken off whoever the hand-written file guessed for it
+        placed = {name: {t.removesuffix(EXPECTED) for t in base[name]} for name in posts}
+        for name in [k for k in base if k not in posts]:
+            taken = set().union(*placed.values())
+            base[name] = [t for t in base[name] if t.removesuffix(EXPECTED) not in taken]
         nxt.setdefault(chamber, {})["roles"] = base
     for cid, posts in (found.get("committees") or {}).items():
         nxt["committees"].setdefault(cid, {}).update(posts)
