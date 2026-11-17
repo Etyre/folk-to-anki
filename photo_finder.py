@@ -48,7 +48,9 @@ Where to look, roughly in this order, moving on when one runs dry:
   page, a byline photo, a news article about them;
 - image_search with the name plus the organisation, role, a former employer or school; try several
   phrasings. Its results often surface profile pictures (LinkedIn, X, Bluesky, speaker pages) whose
-  pages cannot be fetched directly. LinkedIn itself cannot be fetched; do not try;
+  pages cannot be fetched directly. Each result also lists the search engine's own copy of the
+  picture: when the original will not load (LinkedIn's usually will not), view and return that
+  copy instead; it is smaller but good enough. LinkedIn pages themselves cannot be fetched;
 - earlier jobs and schools you learn about along the way: alumni pages, student newspapers,
   fellowship cohorts, past employers' team pages, event recaps, podcast or video guest pages;
 - pages that have been taken down: try https://web.archive.org/web/2024/<the page URL>.
@@ -136,8 +138,10 @@ async def page_images(args):
 
 
 def parse_image_results(text):
-    """Bing image results page -> ["<image url>  title=... page=..."]. Each result is an
-    <a class="iusc" m="{json}"> whose json has murl (image), purl (page) and t (title)."""
+    """Bing image results page -> ["<image url>  title=... page=... search-engine copy=..."]. Each
+    result is an <a class="iusc" m="{json}"> whose json has murl (image), purl (page), t (title)
+    and turl (Bing's own smaller copy, which still loads when the original refuses or has expired,
+    as LinkedIn's do)."""
     out = []
     for m in re.findall(r'class="iusc"[^>]*?\sm="([^"]+)"', text):
         try:
@@ -145,7 +149,8 @@ def parse_image_results(text):
         except ValueError:
             continue
         if d.get("murl"):
-            out.append(f"{d['murl']}  title=\"{d.get('t', '')}\" page={d.get('purl', '')}")
+            out.append(f"{d['murl']}  title=\"{d.get('t', '')}\" page={d.get('purl', '')}"
+                       + (f" search-engine copy={d['turl']}" if d.get("turl") else ""))
     return out
 
 
