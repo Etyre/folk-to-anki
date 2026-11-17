@@ -44,7 +44,9 @@ voted. Mark it "expected" if it is only projected, uncontested but not yet voted
 awaiting a floor vote, or inferred from seniority. Leave out anything you cannot support at all.
 Re-check the posts on file too: an "expected" post may now be confirmed, or may have gone to
 someone else. Prefer primary and major news sources and give the URL you relied on for each
-entry. Use people's full names as Congress lists them, and the exact committee id you were given.
+entry. Each leadership title becomes a flashcard prompt on its own ("Senate Republican Conference
+Chair:"), so it must point to exactly one person: always include the chamber and, for party posts,
+the party; never a bare "Conference Chair" or "Whip". Use people's full names as Congress lists them, and the exact committee id you were given.
 
 Answer only with the structured output."""
 

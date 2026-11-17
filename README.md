@@ -83,6 +83,10 @@ in the same fields. This tool only ever adds or removes `MY_NAME`.
    Cantwell is the chair of [Senate Commerce]."), and a basic card asking the name ("Chair of
    Senate Commerce:" -> name and photo). Committees go by their spoken short name (`SHORT` in
    `cards.py`). A person with two posts of one kind has the other spelled out on each card.
+   **No prompt may have two right answers** (Eli's rule, 2026-11-17). That is why a second post
+   is spelled out, why leadership titles must carry chamber and party (the roles agent is told
+   so), and why a placeholder title containing "unconfirmed" gets no card. Asking the same fact
+   in two formats is fine and intended.
    **A name answer comes with a face** (2026-11-17): role and committee cards show the member's
    photo on the answer side, and a staffer's office card shows the boss (`folk-member-<bioguide>.jpg`).
    A role is "x at y", never just the organisation: "Role: <job title or Staffer> for <member>"

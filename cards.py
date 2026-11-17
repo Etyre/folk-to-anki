@@ -106,7 +106,7 @@ def build(p, decks):
         # prompt has two right answers.
         face = img(pid) if p.get("photo_url") else ""
         answer = esc(name) + (f"<br>{face}" if face else "")
-        roles = p.get("roles", [])
+        roles = [r for r in p.get("roles", []) if "unconfirmed" not in r.lower()]   # a placeholder is not a post
         for role in roles:
             also = "".join(f" (and also the {esc(r)})" for r in roles if r != role)
             note("role:" + role, CLOZE,
