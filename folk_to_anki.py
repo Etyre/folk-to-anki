@@ -1,9 +1,10 @@
 #!/Users/elityre/Documents/agent-coding/folk-to-anki/.venv/bin/python
-"""folk-to-anki: flag in folk (Palisade's CRM) the people Eli has met or is about to meet,
-read from Google Calendar, then build Anki cards for them from his networking templates.
+"""folk-to-anki: tag in folk (Palisade's CRM) the people Eli has met or is about to meet, read
+from Google Calendar, in team-wide "Met with" / "Meeting planned with" fields, then build Anki
+cards for those people from his networking templates.
 
-    folk_to_anki.py setup [--create-fields]   list folk groups, check/create the custom fields
-    folk_to_anki.py flag  [--dry-run]         calendar -> folk "Meeting status" / dates
+    folk_to_anki.py setup [--create-fields] [--card-fields]   list groups, check/create the fields
+    folk_to_anki.py flag  [--dry-run]         calendar -> folk "Met with" / "Meeting planned with" / dates
     folk_to_anki.py cards [--dry-run]         folk -> Anki notes
     folk_to_anki.py run   [--dry-run] [--daily]   flag then cards (--daily: once per day)
     folk_to_anki.py test  [--cleanup]         end to end with fixtures, into a test deck
@@ -64,14 +65,70 @@ def calendar_contacts(cfg):
                                   int(cfg["MAX_ATTENDEES"]), int(cfg["UPCOMING_DAYS"]), int(cfg["PAST_DAYS"]))
 
 
+def tracked_groups(cfg, folk):
+    """-> {group id: {"name", "fields": set of custom field names}} for every group in FOLK_GROUPS."""
+    by_name = {g["name"].strip().lower(): g for g in folk.groups()}
+    out = {}
+    for n in config.csv(cfg["FOLK_GROUPS"]):
+        g = by_name.get(n.lower())
+        if not g:
+            raise SystemExit(f"folk group {n!r} (FOLK_GROUPS) not found; groups are: "
+                             + ", ".join(x["name"] for x in by_name.values()))
+        out[g["id"]] = {"name": g["name"], "fields": {f["name"] for f in folk.group_fields(g["id"])}}
+    return out
+
+
+def groups_of(person, groups):
+    return [g["id"] for g in person.get("groups") or [] if g["id"] in groups]
+
+
+def merged_fields(person, groups):
+    """One view of a person's values across their tracked groups: lists are unioned, anything
+    else is the first non-empty value."""
+    out = {}
+    for gid in groups_of(person, groups):
+        for k, v in folk_api.field_values(person, gid).items():
+            if isinstance(v, list):
+                out[k] = sorted(set(out.get(k) or []) | {x for x in v if isinstance(x, str)})
+            elif v not in (None, "") and not out.get(k):
+                out[k] = v
+    return out
+
+
+def meeting_values(have, last_met, next_meeting, me, today):
+    """The four shared fields after adding what my calendar knows to what is already in folk.
+    Other people's names are never touched: the fields belong to the whole team, and other
+    sources (colleagues, the Slack/email tracker) write to them too."""
+    met = set(have.get(folk_api.MET_WITH) or [])
+    planned = set(have.get(folk_api.PLANNED_WITH) or [])
+    was_planned = me in planned
+    if last_met:
+        met.add(me)
+    (planned.add if next_meeting else planned.discard)(me)
+    last = max([d for d in (have.get(folk_api.LAST_MET), last_met) if d], default=None)
+    nxt = have.get(folk_api.NEXT_MEETING) or None
+    if nxt and nxt < today:
+        nxt = None                                  # that meeting has happened
+    if next_meeting:
+        nxt = min(nxt, next_meeting) if nxt else next_meeting
+    elif was_planned and not planned:
+        nxt = None                                  # mine was the only planned meeting and it is gone
+    return {folk_api.MET_WITH: sorted(met), folk_api.PLANNED_WITH: sorted(planned),
+            folk_api.LAST_MET: last, folk_api.NEXT_MEETING: nxt}
+
+
 def flag(cfg, folk, dry_run):
     contacts = calendar_contacts(cfg)
     log.info("calendar: %d external people on meetings", len(contacts))
-    group = folk.group_by_name(cfg["FOLK_GROUP"])
-    missing = folk.missing_fields(group["id"])
-    if missing:
-        raise SystemExit("folk group %r lacks fields %s; run: folk_to_anki.py setup --create-fields"
-                         % (group["name"], [f["name"] for f in missing]))
+    groups = tracked_groups(cfg, folk)
+    need = [f["name"] for f in folk_api.shared_fields([])]
+    lacking = {g["name"]: [n for n in need if n not in g["fields"]] for g in groups.values()}
+    lacking = {k: v for k, v in lacking.items() if v}
+    if lacking and dry_run:
+        log.warning("shared fields not created yet on %s; showing what would be set once they are", list(lacking))
+    elif lacking:
+        raise SystemExit(f"folk groups lack shared fields {lacking}; run: folk_to_anki.py setup --create-fields")
+    me, today = cfg["MY_NAME"], dt.date.today().isoformat()
     people = folk.all_people()
     by_email, by_name = {}, {}
     for p in people:
@@ -80,26 +137,35 @@ def flag(cfg, folk, dry_run):
         n = congress_mod.norm(p.get("fullName", ""))
         if n:
             by_name.setdefault(n, p)
-    changed, unmatched = 0, []
+    changed, unmatched, outside = 0, [], []
     for c in contacts.values():
         p = by_email.get(c["email"]) or (by_name.get(congress_mod.norm(c["name"])) if c["name"] else None)
         if not p:
             unmatched.append(c)
             continue
-        status = "Planning to meet" if c["next_meeting"] and not c["last_met"] else "Met"
-        want = {"Meeting status": status,
-                "Last met": c["last_met"].isoformat() if c["last_met"] else None,
-                "Next meeting": c["next_meeting"].isoformat() if c["next_meeting"] else None}
-        have = folk_api.field_values(p, group["id"])
-        in_group = any(g["id"] == group["id"] for g in p.get("groups", []))
-        diff = {k: v for k, v in want.items() if (have.get(k) or None) != v}
-        if in_group and not diff:
+        gids = groups_of(p, groups)
+        if not gids:
+            outside.append(p.get("fullName") or c["email"])
+            continue
+        patch = {}
+        for gid in gids:
+            have = folk_api.field_values(p, gid)
+            want = meeting_values(have, c["last_met"].isoformat() if c["last_met"] else None,
+                                  c["next_meeting"].isoformat() if c["next_meeting"] else None, me, today)
+            diff = {k: v for k, v in want.items()
+                    if (sorted(have.get(k) or []) if isinstance(v, list) else have.get(k) or None) != v}
+            if diff:
+                patch[gid] = diff
+        if not patch:
             continue
         changed += 1
-        log.info("%s %s -> %s%s", "would set" if dry_run else "set", p["fullName"], diff or want,
-                 "" if in_group else f" (adding to group {group['name']})")
+        log.info("%s %s -> %s", "would set" if dry_run else "set", p["fullName"],
+                 {groups[g]["name"]: d for g, d in patch.items()})
         if not dry_run:
-            folk.update_person(p, group["id"], want)
+            folk.update_person(p, patch)
+    if outside:
+        log.info("flag: %d calendar people are in folk but in no tracked group (FOLK_GROUPS), left alone: %s",
+                 len(outside), ", ".join(sorted(outside)))
     unmatched.sort(key=lambda c: (c["next_meeting"] or dt.date.min, c["last_met"] or dt.date.min), reverse=True)
     lines = [f"{c['name'] or '?'} <{c['email']}>  last met {c['last_met']}  next {c['next_meeting']}  e.g. {c['events'][-1]}"
              for c in unmatched]
@@ -113,15 +179,20 @@ def flag(cfg, folk, dry_run):
 
 # --- step 2: folk -> Anki ----------------------------------------------------------------------
 def gather(cfg, folk, congress, state=None, finder=None):
+    """-> list of plain person dicts that cards.build understands: everyone in a tracked group whom
+    I have met or plan to meet, plus anyone whose Anki card field names a type."""
     state = state if state is not None else {}
-    """-> list of plain person dicts that cards.build understands."""
-    group = folk.group_by_name(cfg["FOLK_GROUP"])
-    dc_group = folk.group_by_name(cfg["FOLK_DC_GROUP"]) if cfg["FOLK_DC_GROUP"] else None
+    groups = tracked_groups(cfg, folk)
+    dc_id = folk.group_by_name(cfg["FOLK_DC_GROUP"])["id"] if cfg["FOLK_DC_GROUP"] else None
+    me = cfg["MY_NAME"]
     out = []
-    for p in folk.people_in_group(group["id"]):
-        f = folk_api.field_values(p, group["id"])
+    for p in folk.all_people():
+        if not groups_of(p, groups):
+            continue
+        f = merged_fields(p, groups)
         card = f.get("Anki card")
-        if card == "Skip" or (not card and f.get("Meeting status") not in ("Met", "Planning to meet")):
+        mine = me in (f.get(folk_api.MET_WITH) or []) or me in (f.get(folk_api.PLANNED_WITH) or [])
+        if card == "Skip" or not (card or mine):
             continue
         name = p.get("fullName") or f"{p.get('firstName', '')} {p.get('lastName', '')}".strip()
         emails = [e.lower() for e in p.get("emails") or []]
@@ -130,7 +201,7 @@ def gather(cfg, folk, congress, state=None, finder=None):
         if not kind:
             if leg:
                 kind = "Congressperson"
-            elif (dc_group and any(g["id"] == dc_group["id"] for g in p.get("groups", []))) \
+            elif any(g["id"] == dc_id for g in p.get("groups") or []) \
                     or any(e.endswith(STAFF_DOMAINS) for e in emails):
                 kind = "DC staffer"
             else:
@@ -156,7 +227,7 @@ def gather(cfg, folk, congress, state=None, finder=None):
             local = next((x for x in Path(cfg["PHOTOS_DIR"]).glob(p["id"] + ".*")), None)
             rec["photo_url"] = local.as_uri() if local else folk.participant_picture(p)
         if not rec["photo_url"] and finder is not None:
-            rec["photo_url"] = search_photo(cfg, folk, finder, state, group["id"], rec)
+            rec["photo_url"] = search_photo(cfg, folk, finder, state, groups, rec)
         if not rec["photo_url"]:
             log.warning("no photo for %s (%s): add a Photo URL in folk or %s/%s.jpg; skipping the face card",
                         name, kind, cfg["PHOTOS_DIR"], p["id"])
@@ -164,10 +235,10 @@ def gather(cfg, folk, congress, state=None, finder=None):
     return out
 
 
-def search_photo(cfg, folk, finder, state, group_id, rec):
+def search_photo(cfg, folk, finder, state, groups, rec):
     """Ask the photo agent once per person (re-asking after PHOTO_SEARCH_RETRY_DAYS when it found
-    nothing). A verified hit is written to folk's Photo URL field so it shows in the CRM and can be
-    overridden there. Raises photo_finder.ContactRequested if the model wants to talk to Eli."""
+    nothing). A verified hit is kept in state.json and, where the person's group has a Photo URL
+    field, written to folk so it shows in the CRM and can be overridden there. Raises photo_finder.ContactRequested if the model wants to talk to Eli."""
     searched = state.setdefault("photo_search", {})
     prev = searched.get(rec["id"])
     today = dt.date.today()
@@ -192,8 +263,10 @@ def search_photo(cfg, folk, finder, state, group_id, rec):
     save_state(state)
     if url:
         log.info("photo search: %s -> %s (%s)", rec["name"], url, res.get("reason"))
+        patch = {g: {"Photo URL": url} for g in groups_of(p, groups) if "Photo URL" in groups[g]["fields"]}
         try:
-            folk.update_person(p, group_id, {"Photo URL": url})
+            if patch:
+                folk.update_person(p, patch)
         except folk_api.FolkError as e:
             log.error("could not write Photo URL for %s to folk: %s", rec["name"], e)
     else:
@@ -252,21 +325,22 @@ class FakeFolk:
         self.people = json.loads((config.PROJECT_DIR / "tests" / "fixtures" / "people.json").read_text())
         self.writes = []
 
+    def groups(self):
+        return [self.GROUP]
+
     def group_by_name(self, name):
         return self.GROUP
 
-    def missing_fields(self, group_id):
-        return []
+    def group_fields(self, group_id):
+        return [{"name": f["name"]} for f in folk_api.shared_fields([]) + folk_api.CARD_FIELDS]
 
     def all_people(self):
         return self.people
 
-    def people_in_group(self, group_id):
-        return self.people
-
-    def update_person(self, person, group_id, values):
-        self.writes.append((person["fullName"], values))
-        person.setdefault("customFieldValues", {}).setdefault(group_id, {}).update(values)
+    def update_person(self, person, values_by_group):
+        self.writes.append((person["fullName"], values_by_group))
+        for gid, values in values_by_group.items():
+            person.setdefault("customFieldValues", {}).setdefault(gid, {}).update(values)
 
     def participant_picture(self, person):
         return None
@@ -278,6 +352,7 @@ def run_test(cfg, anki, cleanup):
         anki.call("deleteDecks", decks=[TEST_DECK], cardsToo=True)
         return
     folk = FakeFolk()
+    cfg = dict(cfg, FOLK_GROUPS=FakeFolk.GROUP["name"], FOLK_DC_GROUP="", MY_NAME="Eli")
     fixtures = config.PROJECT_DIR / "tests" / "fixtures"
     events = calendar_feed.parse_events((fixtures / "calendar.ics").read_text())
     now = dt.datetime(2026, 11, 7, 12, tzinfo=dt.timezone.utc)
@@ -287,6 +362,14 @@ def run_test(cfg, anki, cleanup):
     assert contacts["staffer@senate.example"]["next_meeting"] and not contacts["staffer@senate.example"]["last_met"]
     assert "bigtalk@elsewhere.example" not in contacts, "events over MAX_ATTENDEES must not count"
     assert "colleague@example.org" not in contacts, "ignored domain leaked"
+    # shared fields: my name is added and removed, colleagues' names and later dates are kept
+    M, P, L, N = folk_api.MET_WITH, folk_api.PLANNED_WITH, folk_api.LAST_MET, folk_api.NEXT_MEETING
+    v = meeting_values({M: ["Dave"], L: "2026-12-01"}, "2026-11-01", "2026-11-20", "Eli", "2026-11-07")
+    assert v == {M: ["Dave", "Eli"], P: ["Eli"], L: "2026-12-01", N: "2026-11-20"}, v
+    v = meeting_values({P: ["Dave", "Eli"], N: "2026-11-20"}, None, None, "Eli", "2026-11-07")
+    assert v == {M: [], P: ["Dave"], L: None, N: "2026-11-20"}, v
+    v = meeting_values({P: ["Eli"], N: "2026-11-20"}, "2026-11-05", None, "Eli", "2026-11-07")
+    assert v == {M: ["Eli"], P: [], L: "2026-11-05", N: None}, v
     congress = congress_mod.Congress(config.APP_SUPPORT / "congress")
     decks = {"dc": TEST_DECK + "::DC", "networking": TEST_DECK + "::Networking"}
     people = gather(cfg, folk, congress)
@@ -294,6 +377,7 @@ def run_test(cfg, anki, cleanup):
     print("kinds:", kinds)
     assert kinds.get("Richard Blumenthal") == "Congressperson" and kinds.get("Sam Staffer") == "DC staffer"
     assert kinds.get("Nina Networker") == "Networking" and "Skipped Person" not in kinds
+    assert "Never Met" not in kinds and "Daves Contact" not in kinds, "only my own meetings get cards"
     state = {}
     counts = make_cards(cfg, folk, congress, anki, decks, dry_run=False, state=state)
     assert counts["failed"] == 0 and counts["added"] + counts["unchanged"] >= 8, counts
@@ -307,7 +391,9 @@ def main(argv=None):
     ap.add_argument("command", choices=["setup", "flag", "cards", "run", "test"])
     ap.add_argument("--dry-run", action="store_true", help="print what would change; write nothing")
     ap.add_argument("--daily", action="store_true", help="exit at once if a run already succeeded today")
-    ap.add_argument("--create-fields", action="store_true", help="setup: create the missing folk custom fields")
+    ap.add_argument("--create-fields", action="store_true", help="setup: create the missing shared fields on every tracked group")
+    ap.add_argument("--card-fields", action="store_true",
+                    help="setup: also create the optional card fields (Anki card, Party, Office, Deal, Photo URL)")
     ap.add_argument("--cleanup", action="store_true", help="test: delete the test deck")
     ap.add_argument("--config", help="path to config.env")
     a = ap.parse_args(argv)
@@ -329,13 +415,16 @@ def main(argv=None):
     if a.command == "setup":
         groups = folk.groups()
         print("folk groups:", ", ".join(f"{g['name']} ({g['id']})" for g in groups))
-        group = folk.group_by_name(cfg["FOLK_GROUP"])
-        missing = folk.missing_fields(group["id"])
-        print(f"group {group['name']!r}: missing fields: {[f['name'] for f in missing] or 'none'}")
-        if missing and a.create_fields:
-            for f in missing:
-                print("creating", f["name"])
-                folk.create_field(group["id"], f)
+        names = [cfg["MY_NAME"]] + [u["fullName"].split()[0] for u in folk.users()]
+        names = [n for i, n in enumerate(names) if n not in names[:i] and n != "Claude"]
+        for gid, g in tracked_groups(cfg, folk).items():
+            shared = [f for f in folk_api.shared_fields(names) if f["name"] not in g["fields"]]
+            card = [f for f in folk_api.CARD_FIELDS if f["name"] not in g["fields"]]
+            print(f"group {g['name']!r}: missing shared fields {[f['name'] for f in shared] or 'none'}; "
+                  f"missing optional card fields {[f['name'] for f in card] or 'none'}")
+            for f in (shared if a.create_fields else []) + (card if a.card_fields else []):
+                print("  creating", f["name"])
+                folk.create_field(gid, f)
         return
     if a.command in ("flag", "run"):
         flag(cfg, folk, a.dry_run)

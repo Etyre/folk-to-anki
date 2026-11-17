@@ -8,8 +8,9 @@ LOG_FILE = Path.home() / "Library" / "Logs" / "folk-to-anki.log"
 
 DEFAULTS = {
     "FOLK_API_KEY": "",
-    "FOLK_GROUP": "Networking",
-    "FOLK_DC_GROUP": "",
+    "FOLK_GROUPS": "US Govt,Partner orgs,Press,Corporate,Donor,Other govts",
+    "FOLK_DC_GROUP": "US Govt",
+    "MY_NAME": "Eli",
     "CALENDAR_ICS_URLS": "",
     "MY_EMAILS": "",
     "IGNORE_EMAIL_DOMAINS": "",

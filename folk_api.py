@@ -1,9 +1,8 @@
 """Thin client for the folk CRM REST API (https://developer.folk.app), stdlib only.
 
-Everything the rest of the program needs from folk goes through here: list the people
-in a group, find the group and its custom fields, create missing fields, and update one
-person's custom field values. Respects folk's 20-requests-per-2-seconds burst limit by
-sleeping on 429.
+Everything the rest of the program needs from folk goes through here: list people, groups and
+a group's custom fields, create missing fields, and update one person's custom field values.
+Respects folk's 20-requests-per-2-seconds burst limit by sleeping on 429.
 """
 import json
 import logging
@@ -15,13 +14,26 @@ import urllib.request
 log = logging.getLogger("folk")
 BASE = "https://api.folk.app/v1"
 
-# Custom fields the integration owns, created on FOLK_GROUP if missing.
+# Custom fields, created per group because folk has no workspace-wide columns: the same field
+# name on every tracked group is what makes it one "general column".
 # Select colours must come from folk's fixed list.
-OWNED_FIELDS = [
-    {"type": "singleSelect", "name": "Meeting status",
-     "options": [{"label": "Met", "color": "#20cea9"}, {"label": "Planning to meet", "color": "#4a90e2"}]},
-    {"type": "dateField", "name": "Last met"},
-    {"type": "dateField", "name": "Next meeting"},
+MET_WITH, PLANNED_WITH, LAST_MET, NEXT_MEETING = "Met with", "Meeting planned with", "Last met", "Next meeting"
+OPTION_COLORS = ["#20cea9", "#4a90e2", "#f5a623", "#5738ff", "#f54e50", "#879aab"]
+
+
+def shared_fields(names):
+    """Team-wide fields, required on every tracked group. `names` are the Palisade people who can
+    be tagged; anyone can add more options in folk later."""
+    opts = [{"label": n, "color": OPTION_COLORS[i % len(OPTION_COLORS)]} for i, n in enumerate(names)]
+    return [{"type": "multipleSelect", "name": MET_WITH, "options": opts},
+            {"type": "multipleSelect", "name": PLANNED_WITH, "options": opts},
+            {"type": "dateField", "name": LAST_MET},
+            {"type": "dateField", "name": NEXT_MEETING}]
+
+
+# Optional card fields: read where a group has them, never required. A group's existing field of
+# the same name (US Govt already has Party) is used as it is.
+CARD_FIELDS = [
     {"type": "singleSelect", "name": "Anki card",
      "options": [{"label": "Congressperson", "color": "#5738ff"}, {"label": "DC staffer", "color": "#f5a623"},
                  {"label": "Networking", "color": "#20cea9"}, {"label": "Skip", "color": "#879aab"}]},
@@ -90,28 +102,20 @@ class Folk:
     def group_fields(self, group_id):
         return self._pages(f"/groups/{group_id}/custom-fields/person")
 
-    def missing_fields(self, group_id):
-        have = {f["name"] for f in self.group_fields(group_id)}
-        return [f for f in OWNED_FIELDS if f["name"] not in have]
-
     def create_field(self, group_id, field):
         return self._call("POST", f"/groups/{group_id}/custom-fields/person", body=field)
 
     # --- people ------------------------------------------------------------------------------
-    def people_in_group(self, group_id):
-        return self._pages("/people", {f"filter[groups][in]": group_id})
-
     def all_people(self):
         return self._pages("/people")
 
-    def update_person(self, person, group_id, values):
-        """Set custom field values on `person` for `group_id`, adding the person to that group
-        if needed (folk replaces the groups list, so every existing group is resent)."""
-        group_ids = [g["id"] for g in person.get("groups", [])]
-        if group_id not in group_ids:
-            group_ids.append(group_id)
-        body = {"groups": [{"id": g} for g in group_ids], "customFieldValues": {group_id: values}}
-        return self._call("PATCH", f"/people/{person['id']}", body=body)
+    def users(self):
+        return self._pages("/users")
+
+    def update_person(self, person, values_by_group):
+        """Set custom field values on `person`: {group id: {field name: value}}. Only groups the
+        person already belongs to; the tool never moves people between groups."""
+        return self._call("PATCH", f"/people/{person['id']}", body={"customFieldValues": values_by_group})
 
     # --- optional photo source: folk calendar/email participants carry a picture ------------
     def participant_picture(self, person):
