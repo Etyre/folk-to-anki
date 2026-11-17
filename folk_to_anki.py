@@ -228,7 +228,7 @@ def gather(cfg, folk, congress, state=None, finder=None):
                 kind = "Networking"
         company = (p.get("companies") or [{}])[0].get("name", "")
         rec = {"id": p["id"], "name": name, "kind": kind, "party": f.get("Party") or "",
-               "office": f.get("Office") or company, "state": "", "chamber": "", "leadership": [],
+               "office": f.get("Office") or company, "job_title": p.get("jobTitle") or "", "state": "", "chamber": "", "leadership": [],
                "deal": f.get("Deal") or p.get("description") or
                        " at ".join(x for x in (p.get("jobTitle"), company) if x),
                "photo_url": f.get("Photo URL") or None, "folk": p}
@@ -243,6 +243,9 @@ def gather(cfg, folk, congress, state=None, finder=None):
             facts = congress.facts(leg)
             rec.update(bioguide=facts["bioguide"], roles=facts["roles"], name=facts["name"], party=facts["party"], state=facts["state"], chamber=facts["chamber"],
                        leadership=facts["leadership"], photo_url=rec["photo_url"] or facts["photo_url"])
+        if kind == "DC staffer" and congress.match(rec["office"]):   # the boss's face goes on the office card
+            boss = congress.facts(congress.match(rec["office"]))
+            rec.update(office_bioguide=boss["bioguide"], office_photo_url=boss["photo_url"])
         if not rec["photo_url"]:
             local = next((x for x in Path(cfg["PHOTOS_DIR"]).glob(p["id"] + ".*")), None)
             rec["photo_url"] = local.as_uri() if local else folk.participant_picture(p)
@@ -428,11 +431,15 @@ def make_cards(cfg, folk, congress, anki, decks, dry_run, state, finder=None):
     people = gather(cfg, folk, congress, state, finder)
     people += member_people(cfg, congress, state, dry_run, skip={p.get("bioguide") for p in people})
     log.info("cards: %d people to card", len(people))
-    counts = {"added": 0, "updated": 0, "unchanged": 0, "failed": 0}
+    counts = {"added": 0, "updated": 0, "unchanged": 0, "skipped": 0, "failed": 0}
     if not dry_run:
         anki.ensure_setup(list(decks.values()))
     uploaded = state.setdefault("photos", {})
     for p in people:
+        leg = congress.match(p["name"]) if p["kind"] == "Congressperson" else None
+        if leg:                                    # Eli's own cards may say "Don Beyer" for "Donald S. Beyer"
+            n = leg["name"]
+            p["aliases"] = [f"{f} {n['last']}" for f in (n["first"], n.get("nickname")) if f]
         notes = cards.build(p, decks)
         if dry_run:
             print(f"\n== {p['name']} [{p['kind']}] photo={'yes' if p.get('photo_url') else 'NO'}")
@@ -449,6 +456,14 @@ def make_cards(cfg, folk, congress, anki, decks, dry_run, state, finder=None):
         except (OSError, anki_mod.AnkiError) as e:
             log.error("photo for %s failed: %s", p["name"], e)
             notes = [n for n in notes if not n["photo_url"]]
+        boss = p.get("office_bioguide")
+        try:
+            if boss and uploaded.get("member-" + boss) != p["office_photo_url"]:
+                anki.store_photo(f"folk-member-{boss}.jpg", fetch_photo(p["office_photo_url"]))
+                uploaded["member-" + boss] = p["office_photo_url"]
+                save_state(state)
+        except (OSError, anki_mod.AnkiError) as e:   # the office card still reads fine without the picture
+            log.error("photo of %s's boss failed: %s", p["name"], e)
         for n in notes:
             try:
                 counts[anki.upsert(n)] += 1
@@ -550,7 +565,7 @@ def run_test(cfg, anki, cleanup):
     assert "Never Met" not in kinds and "Daves Contact" not in kinds, "only my own meetings get cards"
     state = {}
     counts = make_cards(cfg, folk, congress, anki, decks, dry_run=False, state=state)
-    assert counts["failed"] == 0 and counts["added"] + counts["unchanged"] >= 8, counts
+    assert counts["failed"] == 0 and counts["added"] + counts["unchanged"] + counts["skipped"] >= 8, counts
     again = make_cards(cfg, folk, congress, anki, decks, dry_run=False, state=state)
     assert again["added"] == 0 and again["updated"] == 0, f"second run must be a no-op: {again}"
     print(f"\nTEST PASSED. Cards are in Anki deck {TEST_DECK!r}; remove with: folk_to_anki.py test --cleanup")

@@ -62,11 +62,22 @@ class Anki:
     def store_photo(self, filename, data):
         self.call("storeMediaFile", filename=filename, data=base64.b64encode(data).decode())
 
+    def older(self, note):
+        """Ids of hand-made notes (any note type but the tool's) that already ask this card's question."""
+        for query in note.get("older", []):
+            found = self.call("findNotes", query=query + ' -"note:Folk Basic" -"note:Folk Cloze"')
+            if found:
+                return found
+        return []
+
     def upsert(self, note):
-        """-> 'added' | 'updated' | 'unchanged'."""
+        """-> 'added' | 'updated' | 'unchanged' | 'skipped' (Eli already has his own card for this;
+        his keeps its review history and the tool never adds a second one or touches his)."""
         key = note["key"].replace('"', '\\"')
         ids = self.call("findNotes", query=f'"Key:{key}"')
         if not ids:
+            if self.older(note):
+                return "skipped"
             self.call("addNote", note={"deckName": note["deck"], "modelName": note["model"],
                                        "fields": note["fields"], "tags": note["tags"],
                                        "options": {"allowDuplicate": True}})

@@ -39,9 +39,13 @@ INSTRUCTIONS = """You find one good photo of a specific person for Eli's names-a
 The photo card is the most important card he has for each person, and without a photo there is no
 card, so a thorough search is worth the time: keep going well past the first few dead ends.
 
-Return the direct URL of a clear, front-facing photo of the right person, ideally a professional
-headshot. A less polished photo is fine when it clearly shows the face and you can tie it to this
-person.
+Return the direct URL of a clear photo of the right person looking at the camera, ideally a
+professional headshot: Eli has to recognise this face across a table. A less polished photo is fine
+when the face is toward the camera, well lit, large in the frame and not hidden by a hat, hand,
+sunglasses or an object. If the first confirmed photo you find is a profile, an over-the-shoulder
+or looking-away shot, or a small face in a wide scene, treat it as a fallback and keep searching
+for a face-on one; return the fallback only when a thorough search finds nothing better, and say
+so in the reason.
 
 Where to look, roughly in this order, moving on when one runs dry:
 - official and primary pages: the employer's team or staff page, a congressional office or
@@ -57,7 +61,8 @@ Where to look, roughly in this order, moving on when one runs dry:
 - pages that have been taken down: try https://web.archive.org/web/2024/<the page URL>.
 
 Check every candidate with view_image: one person, face clearly visible, not a logo or a group
-shot. Then make sure it is this person and not a namesake: the page or caption should connect the
+shot. The picture goes on the card exactly as it is, nothing crops it, so an image that shows this
+person beside someone else (a side-by-side announcement graphic, say) is not usable. Then make sure it is this person and not a namesake: the page or caption should connect the
 photo to something we know about them (employer, role, city, field). Reject what you cannot
 connect. A wrong photo is worse than no photo, so if nothing can be confirmed after a thorough
 search, answer with url null and say what you tried.

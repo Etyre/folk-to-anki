@@ -66,6 +66,15 @@ in the same fields. This tool only ever adds or removes `MY_NAME`.
    `Key` field `<folk person id>|<kind>`; `anki.py` searches Anki for that key and adds, updates
    or leaves the note alone. Photos go into Anki's media folder as `folk-<id>.jpg`. Note types
    `Folk Basic` and `Folk Cloze` and the decks are created on first run. Nothing is ever deleted.
+   **Eli's own cards win** (2026-11-17): before adding a note, `anki.py` searches the whole
+   collection for a note of any other type that already asks the same thing ("Name: X" on a
+   back, "X's state?", "X's office?", the committee in a chair question, also under the member's
+   short name such as "Don Beyer"). If one exists the note is counted as `skipped`: his card
+   keeps its review history and is never touched or doubled. A chair question is only skipped
+   when his card names the same person, since his may predate an election.
+   **A name answer comes with a face** (2026-11-17): role and committee cards show the member's
+   photo on the answer side, and a staffer's office card shows the boss (`folk-member-<bioguide>.jpg`).
+   A staffer's face card says "Role: <job title or Staffer> for <member>".
 6. **Top members of Congress** (`top_members.py`, added 2026-11-17). Independently of folk, the
    top `SENATORS_TOTAL` (50) senators and `REPS_TOTAL` (25) House members get Congressperson cards,
    `SENATORS_PER_DAY` / `REPS_PER_DAY` (2 each) new ones per day in order of importance; a missed
@@ -234,6 +243,13 @@ direct image link) overrides the photo, since folk's API exposes no profile pict
   more times.
 - A long `cards` run can outlast the Mac staying awake, and Anki may be closed by the time it
   writes. Run long manual batches under `caffeinate -i` and keep Anki open.
+- The photo agent's pick goes on the card uncropped. Early picks included an over-the-shoulder
+  graduation shot and a two-person announcement graphic it meant to have cropped (2026-11-17);
+  the instructions now ask for a face toward the camera and rule out pictures with a second
+  person. To replace a bad photo by hand, put a file named `<folk person id>.jpg` in the photos
+  folder: it wins over the agent's pick (but not over a Photo URL set in folk).
+- The fixture test's people can match Eli's real cards (Don Beyer), so some of its notes come back
+  `skipped`; the test counts those as present.
 - LinkedIn batch by hand (2026-11-17, through Eli's logged-in Chrome with Claude in Chrome): of the
   7 still missing, 2 had a usable profile photo (saved as `<folk person id>.jpg` in the photos
   folder), 2 have a profile with no photo, 3 have no findable profile. To get the full square
