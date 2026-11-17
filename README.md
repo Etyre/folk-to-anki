@@ -171,6 +171,9 @@ direct image link) overrides the photo, since folk's API exposes no profile pict
 - In-process Agent SDK tools return MCP content blocks; an image is
   `{"type": "image", "data": <base64>, "mimeType": "image/jpeg"}` and the model really sees it.
   Keep images under about 3.5 MB (the API limit is 5 MB after decoding).
+- The Agent SDK reads the CLI's output line by line with a 1 MB cap (`max_buffer_size`). A photo
+  returned by `view_image` is bigger than that as base64 and raised `CLIJSONDecodeError` on the
+  first real search (2026-11-17); the option is now 16 MB, and a crashed search is retried next run.
 - `max_budget_usd` on the agent is an estimate that can overshoot slightly; the default $1 per
   person is generous, the trial cost $0.14.
 - The shared confirm step for `contact_eli` (`llm_contact.with_confirm`, see `../shared/README.md`) is not used

@@ -177,6 +177,9 @@ class Finder:
             max_turns=self.max_turns,
             max_budget_usd=self.budget_usd,
             output_format={"type": "json_schema", "schema": OUTPUT_SCHEMA},
+            # view_image hands the model a base64 image of up to 3.5 MB in one JSON message; the
+            # SDK's default 1 MB line buffer raises CLIJSONDecodeError on the first big picture.
+            max_buffer_size=16 * 1024 * 1024,
             cli_path=shutil.which("claude") or str(Path.home() / ".local/bin/claude"),
         )
         final = None

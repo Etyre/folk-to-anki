@@ -269,7 +269,13 @@ def search_photo(cfg, folk, finder, state, groups, rec):
         f"email domain {p['emails'][0].split('@')[1]}" if p.get("emails") else "",
         f"notes: {p.get('description')}" if p.get("description") else "") if x)
     log.info("photo search: %s (%s)", rec["name"], context)
-    res = finder.find(rec["name"], context)
+    try:
+        res = finder.find(rec["name"], context)
+    except photo_finder.ContactRequested:
+        raise
+    except Exception as e:      # one broken session must not end the run; not recorded, so retried next run
+        log.error("photo search for %s crashed, will retry next run: %s", rec["name"], str(e)[:300])
+        return None
     url = (res or {}).get("url")
     if url and res.get("confidence") == "low":
         log.info("photo search: low confidence for %s, not using %s (%s)", rec["name"], url, res.get("reason"))
