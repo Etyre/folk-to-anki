@@ -1,15 +1,16 @@
 """Finds a headshot for one person with a Claude agent (Claude Agent SDK, so it runs through the
 Claude Code login on this Mac, no separate API key).
 
-The agent gets WebSearch and WebFetch plus three in-process tools: `page_images` lists the
-images on a web page, `view_image` shows it one so it can check that the face is the right
-person, and `contact_eli` is the shared LLM-inbox escape hatch. It answers with a structured
+The agent gets WebSearch and WebFetch plus four in-process tools: `page_images` lists the
+images on a web page, `image_search` returns image-search results, `view_image` shows it one so
+it can check that the face is the right person, and `contact_eli` is the shared LLM-inbox escape hatch. It answers with a structured
 {url, source_page, confidence, reason}; we then download the URL ourselves to prove it is an
 image before anyone uses it. System prompt = shared preamble + the task, per agent-coding rules.
 """
 import asyncio
 import base64
 import html as html_mod
+import json
 import logging
 import re
 import shutil
@@ -28,25 +29,42 @@ from claude_agent_sdk import (ClaudeAgentOptions, ResultMessage, create_sdk_mcp_
 log = logging.getLogger("photos")
 APP = "folk-to-anki"
 MODEL = "claude-opus-5-5"
-UA = {"User-Agent": "Mozilla/5.0 (Macintosh) folk-to-anki/1.0"}
+# A browser-like agent: image search and many staff pages answer a bare script with nothing.
+UA = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) "
+                    "Version/17.0 Safari/605.1.15"}
 MAX_IMAGE_BYTES = 3_500_000           # the API caps images at 5 MB; leave room for base64
 
 INSTRUCTIONS = """You find one good photo of a specific person for Eli's names-and-faces flashcards.
+The photo card is the most important card he has for each person, and without a photo there is no
+card, so a thorough search is worth the time: keep going well past the first few dead ends.
 
-Return the direct URL of a clear, recent, front-facing photo of the right person, ideally a
-professional headshot. Prefer official or primary sources: the person's employer's team or staff
-page, a congressional office or committee page, a university or think-tank profile, a conference
-speaker page, a byline photo, a news article about them. LinkedIn cannot be fetched; do not try.
+Return the direct URL of a clear, front-facing photo of the right person, ideally a professional
+headshot. A less polished photo is fine when it clearly shows the face and you can tie it to this
+person.
 
-Method: WebSearch for the person with their role or organisation; WebFetch or page_images on the
-most promising pages (page_images lists every image with its alt text and size); view_image on
-the best one to three candidates and check it is a single person, face clearly visible, not a
-logo, group shot, or someone else with the same name. Reject anything you cannot confirm is this
-person. If nothing good turns up after a reasonable search, answer with url null; a wrong photo
-is worse than no photo.
+Where to look, roughly in this order, moving on when one runs dry:
+- official and primary pages: the employer's team or staff page, a congressional office or
+  committee page, a university, fellowship or think-tank profile, a conference or panel speaker
+  page, a byline photo, a news article about them;
+- image_search with the name plus the organisation, role, a former employer or school; try several
+  phrasings. Its results often surface profile pictures (LinkedIn, X, Bluesky, speaker pages) whose
+  pages cannot be fetched directly. LinkedIn itself cannot be fetched; do not try;
+- earlier jobs and schools you learn about along the way: alumni pages, student newspapers,
+  fellowship cohorts, past employers' team pages, event recaps, podcast or video guest pages;
+- pages that have been taken down: try https://web.archive.org/web/2024/<the page URL>.
 
-Answer only with the structured output: url, source_page, confidence (high / medium / low), and a
-one-sentence reason."""
+Check every candidate with view_image: one person, face clearly visible, not a logo or a group
+shot. Then make sure it is this person and not a namesake: the page or caption should connect the
+photo to something we know about them (employer, role, city, field). Reject what you cannot
+connect. A wrong photo is worse than no photo, so if nothing can be confirmed after a thorough
+search, answer with url null and say what you tried.
+
+If the record has no name, work out who the person is from the organisation and the email hint,
+and give their full name in `name`; leave `name` null when the record already had one or you
+cannot establish it.
+
+Answer only with the structured output: url, source_page, confidence (high / medium / low), name,
+and a one-sentence reason."""
 
 OUTPUT_SCHEMA = {
     "type": "object",
@@ -54,9 +72,10 @@ OUTPUT_SCHEMA = {
         "url": {"type": ["string", "null"], "description": "direct image URL, or null"},
         "source_page": {"type": ["string", "null"]},
         "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
+        "name": {"type": ["string", "null"], "description": "full name, only when the record had none"},
         "reason": {"type": "string"},
     },
-    "required": ["url", "source_page", "confidence", "reason"],
+    "required": ["url", "source_page", "confidence", "name", "reason"],
     "additionalProperties": False,
 }
 
@@ -116,6 +135,32 @@ async def page_images(args):
     return {"content": [{"type": "text", "text": text}]}
 
 
+def parse_image_results(text):
+    """Bing image results page -> ["<image url>  title=... page=..."]. Each result is an
+    <a class="iusc" m="{json}"> whose json has murl (image), purl (page) and t (title)."""
+    out = []
+    for m in re.findall(r'class="iusc"[^>]*?\sm="([^"]+)"', text):
+        try:
+            d = json.loads(html_mod.unescape(m))
+        except ValueError:
+            continue
+        if d.get("murl"):
+            out.append(f"{d['murl']}  title=\"{d.get('t', '')}\" page={d.get('purl', '')}")
+    return out
+
+
+@tool("image_search", "Search the web for images. Returns image URLs with the title and page each came from; "
+      "check candidates with view_image and confirm the source page before trusting one.", {"query": str})
+async def image_search(args):
+    url = "https://www.bing.com/images/search?" + urllib.parse.urlencode({"q": args["query"], "form": "HDRSC2"})
+    try:
+        _, data = await asyncio.to_thread(_get, url, 6_000_000)
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        return {"content": [{"type": "text", "text": f"image search failed: {e}"}], "is_error": True}
+    results = parse_image_results(data.decode("utf-8", "replace"))
+    return {"content": [{"type": "text", "text": "\n".join(results[:25]) or "no image results"}]}
+
+
 @tool("view_image", "Download an image URL and look at it, to confirm it shows the right person clearly.",
       {"url": str})
 async def view_image(args):
@@ -134,7 +179,7 @@ async def view_image(args):
 
 
 class Finder:
-    def __init__(self, budget_usd=1.0, max_turns=30):
+    def __init__(self, budget_usd=5.0, max_turns=120):
         self.budget_usd = budget_usd
         self.max_turns = max_turns
         self.contact = None
@@ -147,11 +192,11 @@ class Finder:
                                               system=self.system, messages=[self._prompt], tools=["contact_eli"])
             return {"content": [{"type": "text", "text": "Delivered to Eli. This task stops here."}]}
 
-        self.server = create_sdk_mcp_server("photos", "1.0.0", [page_images, view_image, contact_eli])
+        self.server = create_sdk_mcp_server("photos", "1.0.0", [page_images, image_search, view_image, contact_eli])
 
     def find(self, name, context):
         """-> {"url", "source_page", "confidence", "reason"} or None. Raises ContactRequested."""
-        self._prompt = f"Find a photo of: {name}\nWhat we know: {context or 'nothing beyond the name'}"
+        self._prompt = f"Find a photo of: {name or '(no name on record)'}\nWhat we know: {context or 'nothing beyond the name'}"
         self.contact = None
         result = asyncio.run(self._run())
         if self.contact:
@@ -170,7 +215,8 @@ class Finder:
             system_prompt=self.system,
             tools=["WebSearch", "WebFetch"],
             mcp_servers={"photos": self.server},
-            allowed_tools=["WebSearch", "WebFetch", "mcp__photos__page_images", "mcp__photos__view_image",
+            allowed_tools=["WebSearch", "WebFetch", "mcp__photos__page_images", "mcp__photos__image_search",
+                           "mcp__photos__view_image",
                            "mcp__photos__contact_eli"],
             permission_mode="dontAsk",
             setting_sources=[],

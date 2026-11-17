@@ -46,15 +46,20 @@ in the same fields. This tool only ever adds or removes `MY_NAME`.
    calendar or email interaction, and finally a web search by a Claude agent (next point). No
    photo means no face card, with a warning in the log.
 4. **Photo agent** (`photo_finder.py`, Claude Agent SDK, model `claude-opus-5-5`). It runs through
-   the Claude Code login on this Mac, so there is no API key to manage; each search is a short
-   agent session (about 7 turns and $0.15 in the trial run). The agent has WebSearch, WebFetch,
-   and three in-process tools: `page_images` (lists a page's images with alt text), `view_image`
+   the Claude Code login on this Mac, so there is no API key to manage. The face card is the card
+   that matters most, so the agent is told to search thoroughly and may spend up to
+   `PHOTO_SEARCH_BUDGET_USD` ($5) and 120 turns per person. The agent has WebSearch, WebFetch,
+   and four in-process tools: `page_images` (lists a page's images with alt text), `image_search`
+   (Bing image results: image URL, title, source page), `view_image`
    (shows it the picture so it can check the face is the right person) and the shared
    `contact_eli`. It answers with a structured `{url, source_page, confidence, reason}`; low
    confidence is discarded, the URL is downloaded to prove it is an image, and a hit is kept in
    `state.json` and, where the person's group has a **Photo URL** field, written to folk so it is
    visible and overridable in the CRM.
-   Each person is searched once; a miss is retried after `PHOTO_SEARCH_RETRY_DAYS`. The system
+   Each person is searched once; a miss is retried after `PHOTO_SEARCH_RETRY_DAYS`, or at once
+   with `cards --retry-photos`. A folk record with no name is identified by the agent from the
+   organisation and the start of the email address; the name is kept in `state.json` and used on
+   the cards (folk itself is not changed). A nameless person who cannot be identified gets no cards. The system
    prompt starts with the shared preamble; a `contact_eli` call or `@ELI:` line is recorded in
    the LLM inbox and stops the run (exit code 2).
 5. `cards.py` turns a person into notes per template (see the docstring there). Every note has a
@@ -144,6 +149,7 @@ cp config.env.example config.env            # then fill in FOLK_API_KEY and CALE
 ./folk_to_anki.py cards --dry-run           # print the cards that would be made
 ./folk_to_anki.py members                   # the Senate and House rankings with reasons and release dates
 ./folk_to_anki.py roles                     # ask the roles agent now (normally every ROLES_CHECK_DAYS inside run)
+./folk_to_anki.py cards --retry-photos      # search again now for everyone without a photo, then update the cards
 ./folk_to_anki.py run                       # do it all for real
 ./folk_to_anki.py test                      # end to end with fixtures into deck "Folk to Anki test"
 ./folk_to_anki.py test --cleanup            # delete that test deck
@@ -213,6 +219,11 @@ direct image link) overrides the photo, since folk's API exposes no profile pict
   first real search (2026-11-17); the option is now 16 MB, and a crashed search is retried next run.
 - First real batch (2026-11-17): 56 people searched for $7.42 in about 50 minutes, 38 photos
   found, 18 not (1 of those rejected as low confidence). The roles agent's first run recorded 53 posts.
+- In the first batch every miss stopped by choice after at most 26 turns and $0.38, far under the
+  budget: 6 were folk records with no name, the other 12 mostly Hill staffers whose only photos are
+  on LinkedIn or behind LegiStorm's paywall. Hence the more persistent instructions and
+  `image_search` (2026-11-17). `image_search` parses Bing's HTML (`class="iusc"` anchors with a JSON
+  `m` attribute); if it starts returning "no image results" for everything, that markup changed.
 - `max_budget_usd` on the agent is an estimate that can overshoot slightly; the default $1 per
   person is generous, the trial cost $0.14.
 - The shared confirm step for `contact_eli` (`llm_contact.with_confirm`, see `../shared/README.md`) is not used

@@ -29,7 +29,7 @@ DEFAULTS = {
     "ROLES_AGENT_BUDGET_USD": "5.0",
     "PHOTOS_DIR": str(APP_SUPPORT / "photos"),
     "PHOTO_SEARCH": "on",
-    "PHOTO_SEARCH_BUDGET_USD": "1.0",
+    "PHOTO_SEARCH_BUDGET_USD": "5.0",
     "PHOTO_SEARCH_RETRY_DAYS": "60",
 }
 

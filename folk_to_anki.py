@@ -213,6 +213,8 @@ def gather(cfg, folk, congress, state=None, finder=None):
         if card == "Skip" or not (card or mine):
             continue
         name = p.get("fullName") or f"{p.get('firstName', '')} {p.get('lastName', '')}".strip()
+        # a folk record with no name: use the name the photo agent worked out on an earlier run
+        name = name or (state.get("photo_search", {}).get(p["id"]) or {}).get("name") or ""
         emails = [e.lower() for e in p.get("emails") or []]
         leg = congress.match(name)
         kind = card
@@ -248,6 +250,10 @@ def gather(cfg, folk, congress, state=None, finder=None):
             rec["photo_url"] = search_photo(cfg, folk, finder, state, groups, rec)
         elif not rec["photo_url"]:                 # agent off or dry run: reuse what it found before
             rec["photo_url"] = (state.get("photo_search", {}).get(p["id"]) or {}).get("url")
+        if not rec["name"]:
+            log.warning("folk person %s has no name and could not be identified; no cards. Add the name in folk.",
+                        (p.get("emails") or [p["id"]])[0])
+            continue
         if not rec["photo_url"]:
             log.warning("no photo for %s (%s): add a Photo URL in folk or %s/%s.jpg; skipping the face card",
                         name, kind, cfg["PHOTOS_DIR"], p["id"])
@@ -270,6 +276,8 @@ def search_photo(cfg, folk, finder, state, groups, rec):
         f"organisation {rec['office']}" if rec.get("office") else "",
         f"party {rec['party']}" if rec.get("party") else "",
         f"email domain {p['emails'][0].split('@')[1]}" if p.get("emails") else "",
+        # only for a nameless record: the part before the @ is often the name or initials
+        f"email starts with '{p['emails'][0].split('@')[0]}'" if p.get("emails") and not rec["name"] else "",
         f"notes: {p.get('description')}" if p.get("description") else "") if x)
     log.info("photo search: %s (%s)", rec["name"], context)
     try:
@@ -285,7 +293,11 @@ def search_photo(cfg, folk, finder, state, groups, rec):
         url = None
     if url and not photo_finder.verify_image(url):
         url = None
-    searched[rec["id"]] = {"date": today.isoformat(), "url": url, "result": res}
+    searched[rec["id"]] = {"date": today.isoformat(), "url": url, "result": res,
+                           **({"name": prev["name"]} if prev and prev.get("name") else {})}
+    if not rec["name"] and (res or {}).get("name") and res.get("confidence") != "low":
+        rec["name"] = searched[rec["id"]]["name"] = res["name"]
+        log.info("photo search: the folk record %s has no name; identified as %s", p.get("emails") or p["id"], res["name"])
     save_state(state)
     if url:
         log.info("photo search: %s -> %s (%s)", rec["name"], url, res.get("reason"))
@@ -552,6 +564,8 @@ def main(argv=None):
     ap.add_argument("--create-fields", action="store_true", help="setup: create the missing shared fields on every tracked group")
     ap.add_argument("--card-fields", action="store_true",
                     help="setup: also create the optional card fields (Anki card, Party, Office, Deal, Photo URL)")
+    ap.add_argument("--retry-photos", action="store_true",
+                    help="cards/run: search again now for everyone whose earlier photo search found nothing")
     ap.add_argument("--cleanup", action="store_true", help="test: delete the test deck")
     ap.add_argument("--config", help="path to config.env")
     a = ap.parse_args(argv)
@@ -560,6 +574,8 @@ def main(argv=None):
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s",
                         handlers=[logging.StreamHandler(sys.stderr), logging.FileHandler(config.LOG_FILE)])
     cfg = config.load(a.config)
+    if a.retry_photos:
+        cfg["PHOTO_SEARCH_RETRY_DAYS"] = "0"
     anki = anki_mod.Anki(cfg["ANKICONNECT_URL"])
     state = load_state()
     today = dt.date.today().isoformat()
