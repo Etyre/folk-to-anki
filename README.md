@@ -78,6 +78,11 @@ in the same fields. This tool only ever adds or removes `MY_NAME`.
    never studied are held, and only cards the tool held are released. Someone with no face card
    at all gets their other cards at once. The release happens on a run, so it needs the daily
    schedule (or a manual `cards`).
+   **Posts** (2026-11-17, Eli's card style): each leadership post or committee chair / ranking
+   member makes two notes. A cloze that blanks only the post, at the end of the sentence ("Maria
+   Cantwell is the chair of [Senate Commerce]."), and a basic card asking the name ("Chair of
+   Senate Commerce:" -> name and photo). Committees go by their spoken short name (`SHORT` in
+   `cards.py`). A person with two posts of one kind has the other spelled out on each card.
    **A name answer comes with a face** (2026-11-17): role and committee cards show the member's
    photo on the answer side, and a staffer's office card shows the boss (`folk-member-<bioguide>.jpg`).
    A role is "x at y", never just the organisation: "Role: <job title or Staffer> for <member>"

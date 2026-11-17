@@ -3,13 +3,15 @@
 Each note is {"deck", "model", "fields": {...}, "tags", "key", "photo_url"} where key is
 "<folk person id>|<kind>" and is what makes reruns update instead of duplicate.
 Templates (Eli's Roam networking templates, 2026-11):
-  Congressperson: photo -> Name/Role; state; party; leadership role cloze; chair/ranking member cloze + reverse.
+  Congressperson: photo -> Name/Role; state; party; per post a cloze blanking the post and a
+                  "Chair of Senate Commerce:" -> name + photo card.
   DC staffer:     photo -> Name/Role(office); office; party.
   Networking:     photo -> Name/Deal.
 Whenever the answer is a person's name, the answer side also shows that person's photo (Eli,
 2026-11-17): the role and committee cards show the member, a staffer's office card shows the boss.
 """
 import html
+import re
 
 BASIC, CLOZE = "Folk Basic", "Folk Cloze"
 PARTY_ADJ = {"Democrat": "Democratic", "Republican": "Republican", "Independent": "Independent"}
@@ -41,6 +43,22 @@ def q(field, *parts):
     already made by hand (his Roam cards) so the tool does not add a second one."""
     clean = [str(x).replace('"', "").replace("*", "").replace("_", "?") for x in parts]
     return f'"{field}:*' + "*".join(clean) + '*"'
+
+
+SHORT = {"SSCM": "Senate Commerce", "SSAS": "Senate Armed Services", "SLIN": "Senate Intelligence",
+         "SSJU": "Senate Judiciary", "SSAP": "Senate Appropriations", "SSGA": "Senate Homeland Security",
+         "SSFR": "Senate Foreign Relations", "SSBK": "Senate Banking", "SSHR": "Senate HELP",
+         "SSEG": "Senate Energy", "SSFI": "Senate Finance", "HSIF": "House Energy and Commerce",
+         "HSSY": "House Science", "HSAS": "House Armed Services", "HLIG": "House Intelligence",
+         "HSJU": "House Judiciary", "HSAP": "House Appropriations", "HSZS": "House China Select Committee",
+         "HSHM": "House Homeland Security", "HSFA": "House Foreign Affairs", "HSBA": "House Financial Services",
+         "HSGO": "House Oversight", "HSED": "House Education and Workforce", "HSWM": "House Ways and Means"}
+
+
+def short_committee(lead):
+    """The name people say: "Senate Commerce", not "Senate Committee on Commerce, Science, and
+    Transportation". Committees outside the list just lose "Committee on"."""
+    return SHORT.get(lead["committee_id"]) or re.sub(r"\bCommittee on (the )?", "", lead["committee"])
 
 
 def staff_role(p):
@@ -82,23 +100,32 @@ def build(p, decks):
              older=lambda n: q("Front", n, "s state?"))
         note("party", BASIC, {"Front": f"{esc(name)}'s party?", "Back": esc(p["party"])}, deck,
              older=lambda n: q("Front", n, "s party?"))
-        # Shown on the answer side of both cloze cards; a missing picture never drops these notes.
+        # Eli's card style (2026-11-17): a cloze blank sits at the end of the sentence, so only the
+        # post is blanked, and the name is asked by a separate card, "Chair of Senate Commerce:" ->
+        # name and photo. Someone with two posts of a kind gets the other one spelled out, so no
+        # prompt has two right answers.
         face = img(pid) if p.get("photo_url") else ""
-        for role in p.get("roles", []):
+        answer = esc(name) + (f"<br>{face}" if face else "")
+        roles = p.get("roles", [])
+        for role in roles:
+            also = "".join(f" (and also the {esc(r)})" for r in roles if r != role)
             note("role:" + role, CLOZE,
-                 {"Text": f"{{{{c1::{esc(name)}}}}} is the {{{{c2::{esc(role)}}}}}.", "Back Extra": face}, deck,
+                 {"Text": f"{esc(name)} is the {{{{c1::{esc(role)}}}}}{also}.", "Back Extra": face}, deck,
                  older=lambda n, role=role: q("Text", n, role))
-        for lead in p.get("leadership", []):
-            cid, title, committee = lead["committee_id"], lead["title"], lead["committee"]
+            note("role_rev:" + role, BASIC, {"Front": f"{esc(role)}:", "Back": answer}, deck, photo=True,
+                 older=lambda n, role=role: q("Front", role) + " " + q("Back", n))
+        leads = p.get("leadership", [])
+        for lead in leads:
+            cid, title, committee = lead["committee_id"], lead["title"], short_committee(lead)
+            also = "".join(f" (and also of {esc(short_committee(o))})" for o in leads
+                           if o["title"] == title and o["committee_id"] != cid)
             note(f"committee:{cid}", CLOZE,
-                 {"Text": f"{{{{c1::{esc(name)}}}}} is the {esc(title)} of the {{{{c2::{esc(committee)}}}}}.",
-                  "Back Extra": face}, deck, older=lambda n, c=committee: q("Text", n, c))
-            back = esc(name) + (f"<br>{img(pid)}" if p.get("photo_url") else "")
+                 {"Text": f"{esc(name)} is the {esc(title)} of {{{{c1::{esc(committee)}}}}}{also}.",
+                  "Back Extra": face}, deck, older=lambda n, c=committee: q("Text", n, c.split(" ", 1)[-1]))
+            # only when his card names the same person: after an election his old card may be out of date
             note(f"committee_rev:{cid}", BASIC,
-                 {"Front": f"Who is the {esc(title)} of the {esc(committee)}?", "Back": back}, deck, photo=True,
-                 # only when his card names the same person: after an election his old card may be out of date
-                 older=lambda n, t=title, c=committee: q("Front", t, c.removeprefix("House ").removeprefix("Senate "))
-                 + " " + q("Back", n))
+                 {"Front": f"{esc(title.capitalize())} of {esc(committee)}:", "Back": answer}, deck, photo=True,
+                 older=lambda n, t=title, c=committee: q("Front", t, c.split(" ", 1)[-1]) + " " + q("Back", n))
 
     elif kind == "DC staffer":
         deck = decks["dc"]
