@@ -234,6 +234,11 @@ direct image link) overrides the photo, since folk's API exposes no profile pict
   more times.
 - A long `cards` run can outlast the Mac staying awake, and Anki may be closed by the time it
   writes. Run long manual batches under `caffeinate -i` and keep Anki open.
+- LinkedIn batch by hand (2026-11-17, through Eli's logged-in Chrome with Claude in Chrome): of the
+  7 still missing, 2 had a usable profile photo (saved as `<folk person id>.jpg` in the photos
+  folder), 2 have a profile with no photo, 3 have no findable profile. To get the full square
+  picture rather than the circle LinkedIn displays, open the image itself (it is 400x400) and save
+  that. Chrome allows one script-started download per site and silently blocks the next ones.
 - `max_budget_usd` on the agent is an estimate that can overshoot slightly; the default $1 per
   person is generous, the trial cost $0.14.
 - The shared confirm step for `contact_eli` (`llm_contact.with_confirm`, see `../shared/README.md`) is not used
