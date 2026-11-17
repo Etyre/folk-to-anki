@@ -117,6 +117,15 @@ class Folk:
         person already belongs to; the tool never moves people between groups."""
         return self._call("PATCH", f"/people/{person['id']}", body={"customFieldValues": values_by_group})
 
+    def update_core(self, person, fields):
+        """Set built-in fields (jobTitle, firstName, lastName) on a person."""
+        return self._call("PATCH", f"/people/{person['id']}", body=fields)
+
+    def add_note(self, person, content):
+        """A note on the person's folk page; used to say where a value the tool wrote came from."""
+        return self._call("POST", "/notes", body={"entity": {"id": person["id"]}, "content": content,
+                                                  "visibility": "public"})
+
     # --- optional photo source: folk calendar/email participants carry a picture ------------
     def participant_picture(self, person):
         """Best-effort: the picture folk attached to this person in a past interaction."""

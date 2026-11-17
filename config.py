@@ -24,6 +24,8 @@ DEFAULTS = {
     "SENATORS_PER_DAY": "2",
     "REPS_TOTAL": "25",
     "REPS_PER_DAY": "2",
+    "TITLES_AGENT": "on",
+    "TITLES_AGENT_BUDGET_USD": "5.0",
     "ROLES_AGENT": "on",
     "ROLES_CHECK_DAYS": "2",
     "ROLES_AGENT_BUDGET_USD": "5.0",

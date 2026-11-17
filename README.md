@@ -87,6 +87,14 @@ in the same fields. This tool only ever adds or removes `MY_NAME`.
    is spelled out, why leadership titles must carry chamber and party (the roles agent is told
    so), and why a placeholder title containing "unconfirmed" gets no card. Asking the same fact
    in two formats is fine and intended.
+   **What Claude writes to folk is flagged** (2026-11-17). Besides the meeting fields, the tool
+   writes two things folk lacked: the name of a nameless record the photo agent identified with
+   high confidence, and a missing job title looked up by `title_finder.py` (one agent session for
+   the whole batch; high or medium confidence only; each person asked once, again after 60 days;
+   `TITLES_AGENT=off` stops it). Every such write adds a note on the person's folk page that
+   starts "Added by Eli's Claude (folk-to-anki) on <date>:" and gives the source, so the team can
+   tell it from what a person entered. What was written is in `state.json` under `folk_writes`
+   and `title_search`.
    **A name answer comes with a face** (2026-11-17): role and committee cards show the member's
    photo on the answer side, and a staffer's office card shows the boss (`folk-member-<bioguide>.jpg`).
    A role is "x at y", never just the organisation: "Role: <job title or Staffer> for <member>"
@@ -144,6 +152,7 @@ in the same fields. This tool only ever adds or removes `MY_NAME`.
 | `congress.py` | Congress name matching, facts and photo from `@unitedstates` data (cached daily) |
 | `cards.py` | the templates as code: person → notes |
 | `top_members.py` | Senate and House importance rankings and the N-per-day release |
+| `title_finder.py` | Claude agent that looks up missing job titles for the whole batch in one session |
 | `roles_agent.py` | Claude agent that finds the incoming Congress's leadership and committee leaders |
 | `next_congress.json` | who sits in the incoming Congress and its leadership, until it convenes |
 | `photo_finder.py` | Claude agent that finds a headshot; `photo_finder.py "Name" "context"` tries it by hand |

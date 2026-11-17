@@ -31,6 +31,7 @@ import congress as congress_mod
 import folk_api
 import photo_finder
 import roles_agent
+import title_finder
 import top_members
 
 log = logging.getLogger("folk-to-anki")
@@ -429,8 +430,70 @@ def fetch_photo(url):
         return r.read()
 
 
+PROVENANCE = "Added by Eli's Claude (folk-to-anki) on {date}: {what}. {why}"
+
+
+def fill_from_claude(cfg, folk, state, people):
+    """Writes to folk what the agents worked out and folk lacks: the name of a nameless record
+    (photo agent, high confidence only) and a missing job title (title agent, high or medium).
+    Every write gets a folk note saying it came from Eli's Claude and why, so the team can tell
+    it from what a person entered (Eli, 2026-11-17). Asked once per person, again after 60 days."""
+    today = dt.date.today()
+    done = state.setdefault("folk_writes", {})
+    for rec in people:                             # names
+        p, found = rec.get("folk"), state.get("photo_search", {}).get(rec["id"]) or {}
+        if not p or p.get("fullName") or not found.get("name") or done.get(rec["id"] + "|name"):
+            continue
+        if (found.get("result") or {}).get("confidence") != "high":
+            continue
+        first, _, last = found["name"].partition(" ")
+        try:
+            folk.update_core(p, {"firstName": first, "lastName": last})
+            folk.add_note(p, PROVENANCE.format(date=today, what=f'name "{found["name"]}"',
+                                               why=(found.get("result") or {}).get("reason", "")))
+            done[rec["id"] + "|name"] = today.isoformat()
+            save_state(state)
+            log.info("folk: named %s as %s", (p.get("emails") or [rec["id"]])[0], found["name"])
+        except folk_api.FolkError as e:
+            log.error("could not write the name of %s to folk: %s", found["name"], e)
+    asked = state.setdefault("title_search", {})
+    todo = [r for r in people if r.get("folk") and r["name"] and not r.get("job_title")
+            and r["kind"] != "Congressperson" and r.get("office")
+            and not (r["id"] in asked and (today - dt.date.fromisoformat(asked[r["id"]]["date"])).days < 60)]
+    if not todo:
+        return
+    log.info("titles: asking the agent about %d people", len(todo))
+    found = title_finder.research(
+        [{"id": r["id"], "name": r["name"], "organisation": r["office"],
+          "hint": "; ".join(x for x in (r["kind"], (r["folk"].get("emails") or [""])[0].partition("@")[2]) if x)}
+         for r in todo], budget_usd=float(cfg["TITLES_AGENT_BUDGET_USD"]))
+    if found is None:
+        return
+    for r in todo:
+        e = found.get(r["id"]) or {"title": None, "confidence": "low", "source": None, "note": "no answer"}
+        asked[r["id"]] = {"date": today.isoformat(), **e}
+        save_state(state)
+        if not e["title"] or e["confidence"] == "low":
+            log.info("titles: nothing confident for %s (%s)", r["name"], e["note"][:120])
+            continue
+        try:
+            folk.update_core(r["folk"], {"jobTitle": e["title"]})
+            folk.add_note(r["folk"], PROVENANCE.format(
+                date=today, what=f'job title "{e["title"]}"',
+                why=f'Confidence {e["confidence"]}. Source: {e["source"]}. {e["note"]}'.strip()))
+        except folk_api.FolkError as err:
+            log.error("could not write the job title of %s to folk: %s", r["name"], err)
+            continue
+        log.info("titles: %s -> %s (%s)", r["name"], e["title"], e["confidence"])
+        r["job_title"] = e["title"]                # this run's cards use it; later runs read it from folk
+        if r.get("deal_label") == "Organization":
+            r["deal"], r["deal_label"] = f"{e['title']} at {r['office']}", "Role"
+
+
 def make_cards(cfg, folk, congress, anki, decks, dry_run, state, finder=None):
     people = gather(cfg, folk, congress, state, finder)
+    if finder is not None and cfg["TITLES_AGENT"].lower() in ("on", "true", "yes", "1"):
+        fill_from_claude(cfg, folk, state, people)
     people += member_people(cfg, congress, state, dry_run, skip={p.get("bioguide") for p in people})
     log.info("cards: %d people to card", len(people))
     counts = {"added": 0, "updated": 0, "unchanged": 0, "skipped": 0, "failed": 0}
