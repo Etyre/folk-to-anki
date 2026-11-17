@@ -224,6 +224,16 @@ direct image link) overrides the photo, since folk's API exposes no profile pict
   on LinkedIn or behind LegiStorm's paywall. Hence the more persistent instructions and
   `image_search` (2026-11-17). `image_search` parses Bing's HTML (`class="iusc"` anchors with a JSON
   `m` attribute); if it starts returning "no image results" for everything, that markup changed.
+- Retry with the stronger agent (2026-11-17): 11 of the 18 found, about $9.80 in all. Five of the
+  six nameless folk records were identified from their email and organisation (the sixth already
+  shows its email as its name in folk and was matched by initials). Still missing: 7 Hill and
+  White House staffers whose only photos are on LinkedIn or behind LegiStorm's paywall.
+- A Claude session sometimes does not start within the SDK's 60 s ("Control request timeout:
+  initialize"); on 2026-11-17 this hit 16 searches in a row for unknown reasons, while a test
+  session an hour later started in 1.3 s. `Finder.find` now waits and starts again, up to three
+  more times.
+- A long `cards` run can outlast the Mac staying awake, and Anki may be closed by the time it
+  writes. Run long manual batches under `caffeinate -i` and keep Anki open.
 - `max_budget_usd` on the agent is an estimate that can overshoot slightly; the default $1 per
   person is generous, the trial cost $0.14.
 - The shared confirm step for `contact_eli` (`llm_contact.with_confirm`, see `../shared/README.md`) is not used

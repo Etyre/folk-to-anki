@@ -12,6 +12,7 @@ import base64
 import html as html_mod
 import json
 import logging
+import time
 import re
 import shutil
 import sys
@@ -203,7 +204,18 @@ class Finder:
         """-> {"url", "source_page", "confidence", "reason"} or None. Raises ContactRequested."""
         self._prompt = f"Find a photo of: {name or '(no name on record)'}\nWhat we know: {context or 'nothing beyond the name'}"
         self.contact = None
-        result = asyncio.run(self._run())
+        # The CLI sometimes fails to start within the SDK's 60 s ("Control request timeout:
+        # initialize"); on 2026-11-17 that cost 16 searches in a row. Nothing has been spent at
+        # that point, so wait and start again.
+        for attempt in range(4):
+            try:
+                result = asyncio.run(self._run())
+                break
+            except Exception as e:
+                if "Control request timeout" not in str(e) or attempt == 3:
+                    raise
+                log.warning("photo agent did not start (%s); retrying in %d s", e, 60 * (attempt + 1))
+                time.sleep(60 * (attempt + 1))
         if self.contact:
             raise ContactRequested(self.contact["message"])
         if result is None:
