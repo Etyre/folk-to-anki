@@ -32,9 +32,12 @@ CHAMBERS = {
               "B": {"HSHM", "HSFA", "HSBA", "HSGO", "HSED", "HSWM"}},
 }
 POINTS = {"A": (50, 40, 8), "B": (30, 25, 3), "other": (12, 10, 0)}       # chair, ranking member, member
-LEADERSHIP = (("speaker", 120), ("majority leader", 100), ("minority leader", 100), ("whip", 60),
+LEADERSHIP = (("speaker", 150), ("majority leader", 100), ("minority leader", 100), ("whip", 60),
               ("president pro tempore", 30))
 OTHER_LEADERSHIP = 20
+# In next_congress.json a post that is expected but not voted on yet ends with this. It counts
+# toward the ranking but gets no card, so no card states something that has not happened.
+EXPECTED = " (expected)"
 
 
 def load_next(path, today=None):
@@ -142,4 +145,5 @@ def person(congress, leg, chamber, nxt=None):
     return {"id": CHAMBERS[chamber]["prefix"] + f["bioguide"], "bioguide": f["bioguide"], "name": f["name"],
             "kind": "Congressperson", "party": f["party"], "state": f["state"],
             "chamber": CHAMBERS[chamber]["title"], "leadership": [] if nxt else f["leadership"],
-            "roles": roles(congress, leg, chamber, nxt), "office": "", "deal": "", "photo_url": f["photo_url"]}
+            "roles": [r for r in roles(congress, leg, chamber, nxt) if not r.endswith(EXPECTED)],
+            "office": "", "deal": "", "photo_url": f["photo_url"]}

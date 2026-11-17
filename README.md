@@ -61,18 +61,32 @@ in the same fields. This tool only ever adds or removes `MY_NAME`.
    `Key` field `<folk person id>|<kind>`; `anki.py` searches Anki for that key and adds, updates
    or leaves the note alone. Photos go into Anki's media folder as `folk-<id>.jpg`. Note types
    `Folk Basic` and `Folk Cloze` and the decks are created on first run. Nothing is ever deleted.
-6. **Senators** (`senators.py`, added 2026-11-17). Independently of folk, the top
-   `SENATORS_TOTAL` (50) sitting senators get Congressperson cards, `SENATORS_PER_DAY` (2) new ones
-   per day in order of importance; a missed day is not caught up in a burst. "Importance" is
-   importance to Palisade's AI policy work, scored from the same public data: floor leadership
-   (leaders 100, whips 60, president pro tem 30, other conference posts 20), then chair / ranking
-   member / member of Commerce, Armed Services, Intelligence, Judiciary and Appropriations
-   (50 / 40 / 8), of Homeland Security, Foreign Relations, Banking, HELP, Energy and Finance
-   (30 / 25 / 3), and chair / ranking member of any other committee (12 / 10). Names in
-   `senator-priority.txt` go first, in the order written. Who has been released, and when, is in
-   `state.json` under `senators`; released senators are refreshed on every run, so a new chair or
-   leadership post updates the cards. Their note keys are `sen-<bioguide>|<kind>`. A senator
-   already carded through folk is not carded twice.
+6. **Top members of Congress** (`top_members.py`, added 2026-11-17). Independently of folk, the
+   top `SENATORS_TOTAL` (50) senators and `REPS_TOTAL` (25) House members get Congressperson cards,
+   `SENATORS_PER_DAY` / `REPS_PER_DAY` (2 each) new ones per day in order of importance; a missed
+   day is not caught up in a burst. "Importance" is importance to Palisade's AI policy work, scored
+   from the same public data: floor leadership (speaker 150, leaders 100, whips 60, president pro
+   tem 30, other posts 20), then chair / ranking member / member of the committees AI runs through
+   (50 / 40 / 8: Senate Commerce, Armed Services, Intelligence, Judiciary, Appropriations; House
+   Energy and Commerce, Science, Armed Services, Intelligence, Judiciary, Appropriations, China
+   select), of the second tier (30 / 25 / 3; see `CHAMBERS` in the file), and chair / ranking
+   member of any other committee (12 / 10). Names in `member-priority.txt` go first, in the order
+   written. Who has been released, and when, is in `state.json` under `senators` and `reps`;
+   released members are refreshed on every run, so a new post updates the cards. Note keys are
+   `sen-<bioguide>|<kind>` and `rep-<bioguide>|<kind>`. A member already carded through folk is
+   not carded twice.
+
+   **Before a new Congress convenes the cards are for the incoming one.** The public data only
+   describes the sitting Congress, so `next_congress.json` (in this folder, filled in by hand from
+   election results) lists who is departing, which House members move up to the Senate, whether a
+   chamber flipped, and the new leadership posts. While it applies (today before its `starts`):
+   departing members are never released; a flipped chamber ranks today's ranking members as the
+   likely chairs; committee chair cards are **not made**, because chairs are only settled when the
+   new Congress organizes; a leadership post ending in ` (expected)` counts for the ranking but
+   gets no card until the vote has happened and the suffix is removed. Nothing is released while
+   `verified` is empty. From `starts` on the file is ignored and the public data takes over, which
+   is when the chair cards appear. People who were never in Congress before (most senators-elect)
+   cannot be carded until the data includes them in January.
 7. `run --daily` does all of this and records a success stamp so the later launchd slots are no-ops.
 
 ## Files
@@ -84,7 +98,8 @@ in the same fields. This tool only ever adds or removes `MY_NAME`.
 | `calendar_feed.py` | iCal fetch, minimal VEVENT parse, met / upcoming contact extraction |
 | `congress.py` | Congress name matching, facts and photo from `@unitedstates` data (cached daily) |
 | `cards.py` | the templates as code: person → notes |
-| `senators.py` | senator importance ranking and the N-per-day release |
+| `top_members.py` | Senate and House importance rankings and the N-per-day release |
+| `next_congress.json` | who sits in the incoming Congress and its leadership, until it convenes |
 | `photo_finder.py` | Claude agent that finds a headshot; `photo_finder.py "Name" "context"` tries it by hand |
 | `anki.py` | AnkiConnect: note types, decks, media, add-or-update by key |
 | `config.py` | reads `config.env` |
@@ -96,8 +111,8 @@ in the same fields. This tool only ever adds or removes `MY_NAME`.
 
 - Config: `config.env` in this folder (untracked; template `config.env.example`).
 - State: `~/Library/Application Support/FolkToAnki/state.json` (uploaded photos, photo searches, last success),
-  `not-in-folk.txt` (calendar contacts without a folk record), `senator-priority.txt` (optional,
-  senators to put first, one name per line), `congress/` (data cache),
+  `not-in-folk.txt` (calendar contacts without a folk record), `member-priority.txt` (optional,
+  senators and representatives to put first, one name per line), `congress/` (data cache),
   `photos/` (manual photos named `<folk person id>.jpg`).
 - Log: `~/Library/Logs/folk-to-anki.log` (launchd's own stdout in `folk-to-anki.launchd.log`).
 - Installed agent: `~/Library/LaunchAgents/com.elityre.folk-to-anki.plist`.
@@ -113,7 +128,7 @@ cp config.env.example config.env            # then fill in FOLK_API_KEY and CALE
 ./folk_to_anki.py setup --card-fields       # also create the optional card fields there
 ./folk_to_anki.py flag --dry-run            # what the calendar would change in folk (works before the fields exist)
 ./folk_to_anki.py cards --dry-run           # print the cards that would be made
-./folk_to_anki.py senators                  # the top-50 senator ranking with reasons and release dates
+./folk_to_anki.py members                   # the Senate and House rankings with reasons and release dates
 ./folk_to_anki.py run                       # do it all for real
 ./folk_to_anki.py test                      # end to end with fixtures into deck "Folk to Anki test"
 ./folk_to_anki.py test --cleanup            # delete that test deck
@@ -157,6 +172,12 @@ direct image link) overrides the photo, since folk's API exposes no profile pict
   before writing; handling them one at a time made Last met flip on every run (2026-11-16).
 - A PATCH with only `customFieldValues: {group id: {field: value}}` merges: other fields in the
   group, other groups' values and group membership are untouched (verified 2026-11-16).
+- `next_congress.json` needs a hand update when leadership votes happen (Senate Democrats and
+  House Democrats had not voted as of 2026-11-17; the speaker vote is 2027-01-03): remove
+  ` (expected)` from a title to get its card. Around 2027-01-03 check that the @unitedstates data
+  has caught up with the new Congress; committee assignments there can lag by weeks.
+- The fixture test used to save its state over the real `state.json` (found 2026-11-17 when it
+  marked two senators as released). It now points `STATE` at a temporary file.
 - Between 00:00 and 06:00 nightblock cuts the network: folk, the photo agent and photo downloads all
   fail ("Connection refused" / "No route to host"), and `test` fails its card count because the
   fixture photos cannot be fetched. Not a bug; run it in the day.

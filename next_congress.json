@@ -1,11 +1,218 @@
 {
- "_comment": "Who sits in the next Congress, for member cards made before it convenes. Filled in by hand from election results; the public @unitedstates data only describes the sitting Congress. Ignored from 'starts' on, when that data takes over. Member cards are held until 'verified' is set. 'departing' lists members of either chamber who will not be in it (retired, defeated, or left for another office); only those who would otherwise rank near the top need listing. 'roles' is null until that chamber's leadership for the new Congress is chosen, then {name: [titles]}.",
+ "_comment": "Who sits in the next Congress, for member cards made before it convenes. Filled in by hand from election results; the public @unitedstates data only describes the sitting Congress. Ignored from 'starts' on, when that data takes over. Member cards are held until 'verified' is set. 'departing' lists sitting members of either chamber who will not be in it (retired, defeated, or left for another office). 'roles' is null until that chamber's leadership for the new Congress is known, then {name: [titles]}; a title ending in ' (expected)' counts for the ranking but gets no card until the vote has happened (then remove the suffix).",
  "congress": 120,
  "starts": "2027-01-03",
- "verified": null,
- "sources": [],
- "departing": [],
- "from_house": [],
- "senate": {"flipped": false, "roles": null},
- "house": {"flipped": false, "roles": null}
+ "verified": "2026-11-17: November 3 results as reported by 16 Nov (about 98% of House races declared; Alaska Senate uncalled, Dan Sullivan left in). Democrats won both chambers. Senate Democratic and House Democratic leadership votes had not happened yet; the House speaker vote is on 3 Jan.",
+ "sources": [
+  "https://en.wikipedia.org/wiki/2026_United_States_Senate_elections",
+  "https://en.wikipedia.org/wiki/2026_United_States_House_of_Representatives_elections",
+  "https://www.cbsnews.com/live-updates/congress-today-senate-house-leadership-elections/",
+  "https://www.nbcnews.com/politics/congress/republicans-reeling-election-choose-leadership-congress-rcna608300",
+  "https://www.axios.com/2026/11/04/hakeem-jeffries-speaker-house-democrats-letter"
+ ],
+ "departing": [
+  "Tommy Tuberville",
+  "Richard Durbin",
+  "Joni Ernst",
+  "Roger Marshall",
+  "Mitch McConnell",
+  "Bill Cassidy",
+  "Susan Collins",
+  "Gary Peters",
+  "Tina Smith",
+  "Cindy Hyde-Smith",
+  "Steve Daines",
+  "Jeanne Shaheen",
+  "Thom Tillis",
+  "Jon Husted",
+  "John Cornyn",
+  "Cynthia Lummis",
+  "Alan Armstrong",
+  "Darline Graham",
+  "Nancy Pelosi",
+  "Julia Brownley",
+  "Frederica Wilson",
+  "Robin Kelly",
+  "Jesus Garcia",
+  "Danny Davis",
+  "Raja Krishnamoorthi",
+  "Cleo Fields",
+  "Jared Golden",
+  "Steny Hoyer",
+  "Seth Moulton",
+  "Haley Stevens",
+  "Angie Craig",
+  "Bonnie Watson Coleman",
+  "Nydia Velazquez",
+  "Jerrold Nadler",
+  "Dwight Evans",
+  "Steve Cohen",
+  "Jasmine Crockett",
+  "Marc Veasey",
+  "Lloyd Doggett",
+  "David Schweikert",
+  "Andy Biggs",
+  "Darrell Issa",
+  "Neal Dunn",
+  "Daniel Webster",
+  "Vern Buchanan",
+  "Byron Donalds",
+  "Mike Collins",
+  "Barry Loudermilk",
+  "Ashley Hinson",
+  "Randy Feenstra",
+  "John James",
+  "Sam Graves",
+  "Ryan Zinke",
+  "Don Bacon",
+  "Mark Amodei",
+  "Elise Stefanik",
+  "Nancy Mace",
+  "Ralph Norman",
+  "Dusty Johnson",
+  "John Rose",
+  "Morgan Luttrell",
+  "Michael McCaul",
+  "Jodey Arrington",
+  "Chip Roy",
+  "Troy Nehls",
+  "Wesley Hunt",
+  "Burgess Owens",
+  "Dan Newhouse",
+  "Diana DeGette",
+  "John Larson",
+  "Shri Thanedar",
+  "Adriano Espaillat",
+  "Al Green",
+  "Julie Johnson",
+  "Cory Mills",
+  "Thomas Massie",
+  "Dan Crenshaw",
+  "Chuck Edwards",
+  "Juan Ciscomani",
+  "David Valadao",
+  "Young Kim",
+  "Lauren Boebert",
+  "Jeff Crank",
+  "Gabe Evans",
+  "Victoria Spartz",
+  "Mariannette Miller-Meeks",
+  "Bill Huizenga",
+  "Tom Barrett",
+  "Ann Wagner",
+  "Thomas Kean",
+  "Addison McDowell",
+  "Richard Hudson",
+  "Brad Knott",
+  "Tim Moore",
+  "Max Miller",
+  "Michael Turner",
+  "Mike Carey",
+  "Brian Fitzpatrick",
+  "Ryan Mackenzie",
+  "Scott Perry",
+  "Scott DesJarlais",
+  "Monica De La Cruz",
+  "Bryan Steil",
+  "Derrick Van Orden",
+  "Mike Thompson",
+  "Jimmy Gomez",
+  "Kevin Kiley",
+  "Janice Schakowsky",
+  "Earl Carter",
+  "Thomas Tiffany",
+  "Dan Goldman",
+  "Andrew Ogles",
+  "Zachary (Zach) Nunn",
+  "Jefferson Van Drew",
+  "Michael Lawler",
+  "Gregory Murphy",
+  "Robert Bresnahan",
+  "Robert Wittman",
+  "Jennifer Kiggans"
+ ],
+ "from_house": [
+  "Barry Moore",
+  "Andy Barr",
+  "Julia Letlow",
+  "Chris Pappas",
+  "Kevin Hern",
+  "Harriet Hageman"
+ ],
+ "senate": {
+  "flipped": true,
+  "roles": {
+   "John Thune": [
+    "Senate Minority Leader"
+   ],
+   "John Barrasso": [
+    "Senate Minority Whip (expected)"
+   ],
+   "Charles Schumer": [
+    "Senate Majority Leader (expected)"
+   ],
+   "Brian Schatz": [
+    "Senate Majority Whip (expected)"
+   ],
+   "Patty Murray": [
+    "President Pro Tempore of the Senate (expected)"
+   ],
+   "Tom Cotton": [
+    "Senate Republican Conference Chair (expected)"
+   ],
+   "Shelley Moore Capito": [
+    "Senate Republican Policy Committee Chair (expected)"
+   ],
+   "James Lankford": [
+    "Senate Republican Conference Vice Chair (expected)"
+   ],
+   "Amy Klobuchar": [
+    "Senate Democratic Steering Committee Chair (expected)"
+   ],
+   "Mark Warner": [
+    "Senate Democratic Conference Vice Chair (expected)"
+   ],
+   "Elizabeth Warren": [
+    "Senate Democratic Conference Vice Chair (expected)"
+   ],
+   "Tammy Baldwin": [
+    "Senate Democratic Conference Secretary (expected)"
+   ],
+   "Cory Booker": [
+    "Senate Democratic Strategic Communications Committee Chair (expected)"
+   ],
+   "Bernard Sanders": [
+    "Senate Democratic Outreach Chair (expected)"
+   ]
+  }
+ },
+ "house": {
+  "flipped": true,
+  "roles": {
+   "Hakeem Jeffries": [
+    "Speaker of the House (expected)"
+   ],
+   "Katherine Clark": [
+    "House Majority Leader (expected)"
+   ],
+   "Pete Aguilar": [
+    "House Majority Whip (expected)"
+   ],
+   "Ted Lieu": [
+    "House Democratic Caucus Chair (expected)"
+   ],
+   "Joe Neguse": [
+    "Assistant House Majority Leader (expected)"
+   ],
+   "Jim Jordan": [
+    "House Minority Leader"
+   ],
+   "Steve Scalise": [
+    "House Minority Whip (expected)"
+   ],
+   "Tom Emmer": [
+    "House Republican leadership, post unconfirmed (expected)"
+   ]
+  }
+ }
 }
