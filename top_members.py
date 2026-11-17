@@ -9,8 +9,9 @@ their chamber, in the order written, so the list can be corrected by hand withou
 Before a new Congress convenes the cards are for the incoming one, not the sitting one. The data
 only knows the sitting one, so next_congress.json (filled in from election results) says who is
 leaving, which House members are moving up to the Senate, whether control of a chamber flipped
-and, once the parties have voted, the new leadership posts. Committee chairs are not settled until
-the new Congress organizes, so chair cards are left out until the data itself describes it.
+and the leadership posts known when it was written. Posts decided later (party leadership votes,
+committee chairs) are found by roles_agent.py and stored in congress-roles.json, which is laid
+over the file. Only confirmed posts become cards; expected ones count for the ranking only.
 """
 import datetime as dt
 import json
@@ -40,13 +41,61 @@ OTHER_LEADERSHIP = 20
 EXPECTED = " (expected)"
 
 
-def load_next(path, today=None):
-    """-> the next_congress.json dict while that Congress has not convened yet, else None."""
+def load_next(path, congress, roles_path=None, today=None):
+    """-> the next_congress.json dict while it still applies, else None. It applies until the new
+    Congress convenes and then until the public data has caught up with it (departed members gone,
+    committee rosters free of them), but never more than 120 days past the start. Posts found by
+    the roles agent (congress-roles.json, see roles_agent.py) are laid over the file's own."""
     try:
         nxt = json.loads(path.read_text())
     except (OSError, ValueError):
         return None
-    return nxt if (today or dt.date.today().isoformat()) < nxt["starts"] else None
+    today = today or dt.date.today().isoformat()
+    if today >= nxt["starts"]:
+        late = (dt.date.fromisoformat(today) - dt.date.fromisoformat(nxt["starts"])).days > 120
+        if late or caught_up(congress, nxt):
+            return None
+    nxt.setdefault("committees", {})
+    try:
+        found = json.loads(roles_path.read_text()) if roles_path else {}
+    except (OSError, ValueError):
+        found = {}
+    for chamber in CHAMBERS:
+        posts = (found.get("leadership") or {}).get(chamber) or {}
+        if not posts:
+            continue
+        base = dict((nxt.get(chamber) or {}).get("roles") or {})
+        for name, items in posts.items():
+            leg = congress.match(name)
+            for old in [k for k in base if leg and congress.match(k) is leg]:
+                del base[old]                       # same person under another spelling
+            base[name] = [i["title"] + ("" if i["status"] == "confirmed" else EXPECTED) for i in items]
+        nxt.setdefault(chamber, {})["roles"] = base
+    for cid, posts in (found.get("committees") or {}).items():
+        nxt["committees"].setdefault(cid, {}).update(posts)
+    return nxt
+
+
+def caught_up(congress, nxt):
+    """True when the public data describes the new Congress: nobody listed as departing is still
+    in it, and no full-committee roster names someone who is no longer a member."""
+    current = {leg["id"]["bioguide"] for leg in congress.legislators}
+    names = set().union(*(_keys(leg) for leg in congress.legislators))
+    if _names(nxt.get("departing")) & names:
+        return False
+    return all(m.get("bioguide") in current
+               for cid, members in congress.membership.items() if cid in congress.committees for m in members)
+
+
+def committee_posts(congress, nxt):
+    """{committee id: {bioguide: (title, confirmed)}} for the incoming Congress's known leaders."""
+    out = {}
+    for cid, posts in ((nxt or {}).get("committees") or {}).items():
+        for title, post in posts.items():
+            leg = congress.match(post["name"])
+            if leg:
+                out.setdefault(cid, {})[leg["id"]["bioguide"]] = (title, post["status"] == "confirmed")
+    return out
 
 
 def _keys(leg):
@@ -89,6 +138,7 @@ def rank(congress, chamber, priority_names=(), nxt=None):
                                                          OTHER_LEADERSHIP)
             why.append(role)
         scored[leg["id"]["bioguide"]] = [leg, score, why]
+    posts = committee_posts(congress, nxt)
     for cid, members in congress.membership.items():
         com = congress.committees.get(cid)                # full committees only
         if not com or com.get("type") != chamber:
@@ -98,19 +148,26 @@ def rank(congress, chamber, priority_names=(), nxt=None):
         for lead in ("Senate Committee on ", "Senate Select Committee on ", "House Committee on ",
                      "House Permanent Select Committee on ", "House Select Committee on "):
             short = short.replace(lead, "")
+        known = posts.get(cid, {})                      # leaders already named for the new Congress
+        named = {t for t, _ in known.values()}
+        for bioguide, (title, confirmed) in known.items():
+            s = scored.get(bioguide)
+            if s:
+                s[1] += chair if title == "chair" else ranking
+                s[2].append(f"{'' if confirmed else 'expected '}{title}, {short}")
         for m in members:
             s = scored.get(m.get("bioguide"))
-            if not s or s[2][:1] == ["moving up from the House"]:
+            if not s or s[2][:1] == ["moving up from the House"] or m.get("bioguide") in known:
                 continue
             title = (m.get("title") or "").lower()
             is_chair, is_ranking = title.startswith("chair"), title == "ranking member"
             if flipped:
                 is_chair, is_ranking = is_ranking, is_chair
             likely, sitting = ("likely ", " (sitting Congress)") if nxt else ("", "")
-            if is_chair:
+            if is_chair and "chair" not in named:
                 s[1] += chair
                 s[2].append(f"{likely}chair, {short}{sitting}")
-            elif is_ranking:
+            elif is_ranking and "ranking member" not in named:
                 s[1] += ranking
                 s[2].append(f"{likely}ranking member, {short}{sitting}")
             elif member:
@@ -140,10 +197,15 @@ def release(ranked_ids, released, today, per_day, total):
 
 def person(congress, leg, chamber, nxt=None):
     """A member as the plain dict cards.build understands (kind Congressperson). For an incoming
-    Congress, committee posts are left out (not settled yet)."""
+    Congress only posts confirmed for it are carded: no sitting-Congress chairs, nothing expected."""
     f = congress.facts(leg)
+    leadership = f["leadership"]
+    if nxt:
+        leadership = [{"committee_id": cid, "committee": congress.committees[cid]["name"], "title": title}
+                      for cid, known in committee_posts(congress, nxt).items() if cid in congress.committees
+                      for bioguide, (title, confirmed) in known.items() if bioguide == f["bioguide"] and confirmed]
     return {"id": CHAMBERS[chamber]["prefix"] + f["bioguide"], "bioguide": f["bioguide"], "name": f["name"],
             "kind": "Congressperson", "party": f["party"], "state": f["state"],
-            "chamber": CHAMBERS[chamber]["title"], "leadership": [] if nxt else f["leadership"],
+            "chamber": CHAMBERS[chamber]["title"], "leadership": leadership,
             "roles": [r for r in roles(congress, leg, chamber, nxt) if not r.endswith(EXPECTED)],
             "office": "", "deal": "", "photo_url": f["photo_url"]}

@@ -8,6 +8,7 @@ cards for those people from his networking templates.
     folk_to_anki.py cards [--dry-run]         folk -> Anki notes
     folk_to_anki.py run   [--dry-run] [--daily]   flag then cards (--daily: once per day)
     folk_to_anki.py members                   the Senate and House rankings, with the date each member was released
+    folk_to_anki.py roles                     ask the roles agent now who holds which post in the incoming Congress
     folk_to_anki.py test  [--cleanup]         end to end with fixtures, into a test deck
 
 Config: config.env next to this file (see config.env.example). State and caches:
@@ -29,6 +30,7 @@ import config
 import congress as congress_mod
 import folk_api
 import photo_finder
+import roles_agent
 import top_members
 
 log = logging.getLogger("folk-to-anki")
@@ -36,6 +38,7 @@ STATE = config.APP_SUPPORT / "state.json"
 REPORT = config.APP_SUPPORT / "not-in-folk.txt"
 PRIORITY = config.APP_SUPPORT / "member-priority.txt"
 NEXT_CONGRESS = config.PROJECT_DIR / "next_congress.json"
+ROLES = config.APP_SUPPORT / "congress-roles.json"
 TEST_DECK = "Folk to Anki test"
 # chamber -> (state.json key, config prefix)
 CHAMBER_KEYS = {"senate": ("senators", "SENATORS"), "house": ("reps", "REPS")}
@@ -301,6 +304,71 @@ def full_name(leg):
     return leg["name"].get("official_full") or f"{leg['name']['first']} {leg['name']['last']}"
 
 
+def update_roles(cfg, congress, force=False):
+    """While the incoming-Congress file applies, ask the roles agent every ROLES_CHECK_DAYS who now
+    holds which post, and merge its answer into congress-roles.json. Entries are kept per person
+    and per committee post, so something the agent leaves out one day is not forgotten; a post
+    that moved to someone else is taken off the previous holder."""
+    nxt = top_members.load_next(NEXT_CONGRESS, congress, ROLES)
+    if not nxt or not nxt.get("verified"):
+        return
+    try:
+        found = json.loads(ROLES.read_text())
+    except (OSError, ValueError):
+        found = {}
+    today = dt.date.today()
+    if not force and (cfg["ROLES_AGENT"].lower() not in ("on", "true", "yes", "1") or (
+            found.get("checked") and (today - dt.date.fromisoformat(found["checked"])).days < int(cfg["ROLES_CHECK_DAYS"]))):
+        return
+    on_file = [f"{ch}: {name}: {', '.join(titles)}" for ch in top_members.CHAMBERS
+               for name, titles in ((nxt.get(ch) or {}).get("roles") or {}).items()]
+    on_file += [f"{cid} {title}: {post['name']} ({post['status']})"
+                for cid, posts in nxt["committees"].items() for title, post in posts.items()]
+    wanted = [(cid, congress.committees[cid]["name"]) for ch in top_members.CHAMBERS.values()
+              for cid in sorted(ch["A"] | ch["B"]) if cid in congress.committees]
+    log.info("roles: asking the agent about the %sth Congress", nxt["congress"])
+    res = roles_agent.research(nxt["congress"], nxt["starts"], "\n".join(on_file), wanted,
+                               budget_usd=float(cfg["ROLES_AGENT_BUDGET_USD"]))
+    if res is None:
+        return
+    changes = []
+    lead = found.setdefault("leadership", {})
+    for chamber in top_members.CHAMBERS:
+        mine, by_name = lead.setdefault(chamber, {}), {}
+        for post in res[chamber + "_leadership"]:
+            if not congress.match(post["name"]):
+                log.info("roles: %s (%s) is not in the Congress data yet; left out", post["name"], post["title"])
+                continue
+            by_name.setdefault(full_name(congress.match(post["name"])), []).append(
+                {k: post[k] for k in ("title", "status", "source")})
+        for name, items in by_name.items():
+            titles = {i["title"] for i in items}
+            for other in [o for o in mine if o != name]:          # a post that moved leaves its old holder
+                mine[other] = [i for i in mine[other] if i["title"] not in titles]
+            if mine.get(name) != items:
+                changes.append(f"{name}: " + "; ".join(f"{i['title']} ({i['status']})" for i in items))
+            mine[name] = items
+        for empty in [o for o in mine if not mine[o]]:
+            del mine[empty]
+    coms = found.setdefault("committees", {})
+    for post in res["committees"]:
+        cid, leg = post["committee_id"], congress.match(post["name"])
+        if cid not in congress.committees or not leg:
+            log.info("roles: skipping %s %s for %s (unknown committee or person not in the data)",
+                     cid, post["title"], post["name"])
+            continue
+        new = {"name": full_name(leg), "status": post["status"], "source": post["source"]}
+        if coms.setdefault(cid, {}).get(post["title"]) != new:
+            changes.append(f"{congress.committees[cid]['name']}: {post['title']} {new['name']} ({new['status']})")
+        coms[cid][post["title"]] = new
+    found.update(checked=today.isoformat(), notes=res.get("notes", ""))
+    ROLES.parent.mkdir(parents=True, exist_ok=True)
+    ROLES.write_text(json.dumps(found, indent=1, sort_keys=True))
+    for c in changes:
+        log.info("roles: %s", c)
+    log.info("roles: %d changes; agent notes: %s", len(changes), res.get("notes", ""))
+
+
 def member_ranking(congress, chamber, nxt=None):
     names = [x.strip() for x in PRIORITY.read_text().splitlines() if x.strip() and not x.startswith("#")] \
         if PRIORITY.exists() else []
@@ -311,7 +379,7 @@ def member_people(cfg, congress, state, dry_run, skip=()):
     """The senators and representatives released so far (plus today's, at most <CHAMBER>_PER_DAY
     each) as card people. Members who left drop out of the data and are simply no longer updated.
     `skip` holds the bioguide ids already carded through folk, so nobody gets two sets of cards."""
-    nxt = top_members.load_next(NEXT_CONGRESS)
+    nxt = top_members.load_next(NEXT_CONGRESS, congress, ROLES)
     out = []
     for chamber, (key, conf) in CHAMBER_KEYS.items():
         total, per_day = int(cfg[conf + "_TOTAL"]), int(cfg[conf + "_PER_DAY"])
@@ -450,7 +518,9 @@ def run_test(cfg, anki, cleanup):
     moved = top_members.rank(congress, "senate", (), {"from_house": [rep]})
     assert rep in [full_name(l) for l, _, _ in moved], "a House member moving up is a senator"
     assert rep not in [full_name(l) for l, _, _ in top_members.rank(congress, "house", (), {"from_house": [rep]})]
-    assert top_members.load_next(NEXT_CONGRESS, "2027-01-03") is None, "the file stops applying once Congress convenes"
+    assert top_members.load_next(NEXT_CONGRESS, congress, None, "2027-06-01") is None, "the file stops applying"
+    nxt = {"departing": [], "committees": {"SSCM": {"chair": {"name": rep, "status": "expected"}}}}
+    assert not top_members.committee_posts(congress, nxt)["SSCM"][congress.match(rep)["id"]["bioguide"]][1]
     rel = {}
     assert top_members.release(ids, rel, "2026-11-17", 2, 5) == ids[:2]
     assert top_members.release(ids, rel, "2026-11-17", 2, 5) == [], "at most two per day"
@@ -476,7 +546,7 @@ def run_test(cfg, anki, cleanup):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["setup", "flag", "cards", "run", "members", "test"])
+    ap.add_argument("command", choices=["setup", "flag", "cards", "run", "members", "roles", "test"])
     ap.add_argument("--dry-run", action="store_true", help="print what would change; write nothing")
     ap.add_argument("--daily", action="store_true", help="exit at once if a run already succeeded today")
     ap.add_argument("--create-fields", action="store_true", help="setup: create the missing shared fields on every tracked group")
@@ -496,9 +566,11 @@ def main(argv=None):
 
     if a.command == "test":
         return run_test(cfg, anki, a.cleanup)
+    if a.command == "roles":
+        return update_roles(cfg, congress_mod.Congress(config.APP_SUPPORT / "congress"), force=True)
     if a.command == "members":
-        nxt = top_members.load_next(NEXT_CONGRESS)
         congress = congress_mod.Congress(config.APP_SUPPORT / "congress")
+        nxt = top_members.load_next(NEXT_CONGRESS, congress, ROLES)
         if nxt:
             print(f"Incoming {nxt['congress']}th Congress (from {nxt['starts']}); next_congress.json verified: "
                   f"{nxt.get('verified') or 'NO, cards are held'}; departing listed: {len(nxt.get('departing') or [])}")
@@ -533,6 +605,8 @@ def main(argv=None):
     if a.command in ("cards", "run"):
         congress = congress_mod.Congress(config.APP_SUPPORT / "congress")
         decks = {"dc": cfg["DECK_DC"], "networking": cfg["DECK_NETWORKING"]}
+        if not a.dry_run:
+            update_roles(cfg, congress)
         finder = None
         if cfg["PHOTO_SEARCH"].lower() in ("on", "true", "yes", "1") and not a.dry_run:
             finder = photo_finder.Finder(budget_usd=float(cfg["PHOTO_SEARCH_BUDGET_USD"]))
