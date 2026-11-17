@@ -44,12 +44,18 @@ def q(field, *parts):
 
 
 def staff_role(p):
-    """ "Senior Policy Adviser for Jeff Merkley", "Staffer for Sara Jacobs"; a committee or agency
-    office is not a person, so there it is "Counsel, House Foreign Affairs Committee" or just the office."""
+    """A role is "x at y", never just the organisation (Eli, 2026-11-17): "Senior Policy Adviser for
+    Jeff Merkley", "Staffer for Sara Jacobs", "Counsel at House Foreign Affairs Committee".
+    -> (label, text); when no title is known outside a member's office the line is labelled
+    Organization, so the card does not pass an employer off as a role."""
     title, office = p.get("job_title") or "", p.get("office") or ""
+    if office.startswith("PSM "):                  # folk shorthand for professional staff member
+        title, office = title or "Professional Staff Member", office[4:]
     if p.get("office_bioguide"):
-        return f"{title or 'Staffer'} for {office}"
-    return ", ".join(x for x in (title, office) if x)
+        return "Role", f"{title or 'Staffer'} for {office}"
+    if title and office:
+        return "Role", f"{title} at {office}"
+    return ("Role", title) if title else ("Organization", office)
 
 
 def build(p, decks):
@@ -97,7 +103,7 @@ def build(p, decks):
     elif kind == "DC staffer":
         deck = decks["dc"]
         if p.get("photo_url"):
-            note("photo", BASIC, {"Front": photo_front(pid), "Back": listing([("Name", name), ("Role", staff_role(p))])},
+            note("photo", BASIC, {"Front": photo_front(pid), "Back": listing([("Name", name), staff_role(p)])},
                  deck, ["names_and_faces"], photo=True, older=lambda n: q("Back", "Name: " + n + "<"))
         if p.get("office"):
             boss = f"<br>{member_img(p['office_bioguide'])}" if p.get("office_bioguide") else ""
@@ -110,6 +116,6 @@ def build(p, decks):
     else:  # Networking
         deck = decks["networking"]
         if p.get("photo_url"):
-            note("photo", BASIC, {"Front": photo_front(pid), "Back": listing([("Name", name), ("Deal", p["deal"])])},
+            note("photo", BASIC, {"Front": photo_front(pid), "Back": listing([("Name", name), (p.get("deal_label") or "Deal", p["deal"])])},
                  deck, ["names_and_faces"], photo=True, older=lambda n: q("Back", "Name: " + n + "<"))
     return notes

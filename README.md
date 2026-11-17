@@ -74,7 +74,9 @@ in the same fields. This tool only ever adds or removes `MY_NAME`.
    when his card names the same person, since his may predate an election.
    **A name answer comes with a face** (2026-11-17): role and committee cards show the member's
    photo on the answer side, and a staffer's office card shows the boss (`folk-member-<bioguide>.jpg`).
-   A staffer's face card says "Role: <job title or Staffer> for <member>".
+   A role is "x at y", never just the organisation: "Role: <job title or Staffer> for <member>"
+   for a member's office, "Role: <job title> at <organisation>" elsewhere. When folk has no job
+   title the line is labelled "Organization" instead; fill in the job title in folk to fix it.
 6. **Top members of Congress** (`top_members.py`, added 2026-11-17). Independently of folk, the
    top `SENATORS_TOTAL` (50) senators and `REPS_TOTAL` (25) House members get Congressperson cards,
    `SENATORS_PER_DAY` / `REPS_PER_DAY` (2 each) new ones per day in order of importance; a missed
