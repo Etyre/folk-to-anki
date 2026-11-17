@@ -1,0 +1,11 @@
+{
+ "_comment": "Who sits in the next Congress, for member cards made before it convenes. Filled in by hand from election results; the public @unitedstates data only describes the sitting Congress. Ignored from 'starts' on, when that data takes over. Member cards are held until 'verified' is set. 'departing' lists members of either chamber who will not be in it (retired, defeated, or left for another office); only those who would otherwise rank near the top need listing. 'roles' is null until that chamber's leadership for the new Congress is chosen, then {name: [titles]}.",
+ "congress": 120,
+ "starts": "2027-01-03",
+ "verified": null,
+ "sources": [],
+ "departing": [],
+ "from_house": [],
+ "senate": {"flipped": false, "roles": null},
+ "house": {"flipped": false, "roles": null}
+}
