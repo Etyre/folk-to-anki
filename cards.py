@@ -46,8 +46,8 @@ def q(field, *parts):
 def staff_role(p):
     """A role is "x at y", never just the organisation (Eli, 2026-11-17): "Senior Policy Adviser for
     Jeff Merkley", "Staffer for Sara Jacobs", "Counsel at House Foreign Affairs Committee".
-    -> (label, text); when no title is known outside a member's office the line is labelled
-    Organization, so the card does not pass an employer off as a role."""
+    With no job title it is "Staffer for <office>", the wording on Eli's own Roam cards
+    ("Staffer for Blumenthal", "Staffer for the House China Committee"). -> (label, text)."""
     title, office = p.get("job_title") or "", p.get("office") or ""
     if office.startswith("PSM "):                  # folk shorthand for professional staff member
         title, office = title or "Professional Staff Member", office[4:]
@@ -55,7 +55,7 @@ def staff_role(p):
         return "Role", f"{title or 'Staffer'} for {office}"
     if title and office:
         return "Role", f"{title} at {office}"
-    return ("Role", title) if title else ("Organization", office)
+    return "Role", (title or (f"Staffer for {office}" if office else ""))
 
 
 def build(p, decks):
