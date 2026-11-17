@@ -138,20 +138,28 @@ def flag(cfg, folk, dry_run):
         if n:
             by_name.setdefault(n, p)
     changed, unmatched, outside = 0, [], []
+    # One folk person can be several calendar contacts (two email addresses), so combine them
+    # first: otherwise each address overwrites the other's dates and every run changes something.
+    matched = {}
     for c in contacts.values():
         p = by_email.get(c["email"]) or (by_name.get(congress_mod.norm(c["name"])) if c["name"] else None)
         if not p:
             unmatched.append(c)
             continue
+        m = matched.setdefault(p["id"], {"p": p, "last": None, "next": None})
+        m["last"] = max([d for d in (m["last"], c["last_met"]) if d], default=None)
+        m["next"] = min([d for d in (m["next"], c["next_meeting"]) if d], default=None)
+    for m in matched.values():
+        p = m["p"]
         gids = groups_of(p, groups)
         if not gids:
-            outside.append(p.get("fullName") or c["email"])
+            outside.append(p.get("fullName") or p["id"])
             continue
         patch = {}
         for gid in gids:
             have = folk_api.field_values(p, gid)
-            want = meeting_values(have, c["last_met"].isoformat() if c["last_met"] else None,
-                                  c["next_meeting"].isoformat() if c["next_meeting"] else None, me, today)
+            want = meeting_values(have, m["last"].isoformat() if m["last"] else None,
+                                  m["next"].isoformat() if m["next"] else None, me, today)
             diff = {k: v for k, v in want.items()
                     if (sorted(have.get(k) or []) if isinstance(v, list) else have.get(k) or None) != v}
             if diff:

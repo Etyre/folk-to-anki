@@ -138,8 +138,14 @@ direct image link) overrides the photo, since folk's API exposes no profile pict
   returns HTTP 422. The tool now pages through everyone and filters in Python instead.
 - folk's PATCH replaces the `groups` list if one is sent. The tool sends only
   `customFieldValues`, so it cannot change anyone's group membership.
-- Nothing had run against the real folk API before 2026-11-16 (the key was empty until then);
-  reads are verified since, writes are verified only once the first real `flag` run is done.
+- One folk person can appear in the calendar under two email addresses. `flag` combines those
+  before writing; handling them one at a time made Last met flip on every run (2026-11-16).
+- A PATCH with only `customFieldValues: {group id: {field: value}}` merges: other fields in the
+  group, other groups' values and group membership are untouched (verified 2026-11-16).
+- Without a photo a Networking person gets no cards at all and a DC staffer only office/party
+  cards, so the photo search (or a Photo URL) decides most of the output.
+- folk's `/interactions` needs `timeframe`; it answers, but the participants carried no pictures
+  for anyone in the first real run, so that photo source is effectively empty.
 - folk rate limit is 20 requests per 2 seconds; the client sleeps on 429. `all_people()` pages
   through the whole workspace once per `flag` run.
 - `/usr/bin/python3` under launchd cannot read `~/Documents`; the plist uses the project `.venv`
