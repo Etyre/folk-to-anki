@@ -70,6 +70,36 @@ class Anki:
                 return found
         return []
 
+    WAITING = "folk-waiting-for-face"
+
+    def gate(self, face_queries, keys):
+        """Face first (Eli, 2026-11-17): a person's other cards stay suspended until their
+        names-and-faces card (the tool's or his own) has graduated to a review card, then come
+        back. Only never-seen cards are held, and only cards held here are released, so anything
+        Eli suspended or already studies is left alone. -> 'held' | 'released' | None."""
+        face = [i for fq in face_queries for i in self.call("findNotes", query=fq)]
+        if not face or not keys:
+            return None                            # no face card at all: nothing to wait for
+        nid = lambda ids: "nid:" + ",".join(map(str, ids))
+        known = any(c["type"] in (2, 3) for c in
+                    self.call("cardsInfo", cards=self.call("findCards", query=nid(face))))
+        notes = [i for k in keys for i in self.call("findNotes", query='"Key:%s"' % k.replace('"', '\\"'))]
+        if not notes:
+            return None
+        if known:
+            held = self.call("findNotes", query=f"tag:{self.WAITING} {nid(notes)}")
+            if not held:
+                return None
+            self.call("unsuspend", cards=self.call("findCards", query=nid(held)))
+            self.call("removeTags", notes=held, tags=self.WAITING)
+            return "released"
+        new = self.call("findCards", query=f"is:new -is:suspended {nid(notes)}")
+        if not new:
+            return None
+        self.call("suspend", cards=new)
+        self.call("addTags", notes=sorted({c["note"] for c in self.call("cardsInfo", cards=new)}), tags=self.WAITING)
+        return "held"
+
     def upsert(self, note):
         """-> 'added' | 'updated' | 'unchanged' | 'skipped' (Eli already has his own card for this;
         his keeps its review history and the tool never adds a second one or touches his)."""

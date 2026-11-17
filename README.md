@@ -72,6 +72,12 @@ in the same fields. This tool only ever adds or removes `MY_NAME`.
    short name such as "Don Beyer"). If one exists the note is counted as `skipped`: his card
    keeps its review history and is never touched or doubled. A chair question is only skipped
    when his card names the same person, since his may predate an election.
+   **Face first** (2026-11-17): a person's other cards (party, state, office, roles, committees)
+   are suspended and tagged `folk-waiting-for-face` until their names-and-faces card, the tool's
+   or Eli's own, has graduated to a review card; the next run then unsuspends them. Only cards
+   never studied are held, and only cards the tool held are released. Someone with no face card
+   at all gets their other cards at once. The release happens on a run, so it needs the daily
+   schedule (or a manual `cards`).
    **A name answer comes with a face** (2026-11-17): role and committee cards show the member's
    photo on the answer side, and a staffer's office card shows the boss (`folk-member-<bioguide>.jpg`).
    A role is "x at y", never just the organisation: "Role: <job title or Staffer> for <member>"

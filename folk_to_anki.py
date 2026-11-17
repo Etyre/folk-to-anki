@@ -437,6 +437,7 @@ def make_cards(cfg, folk, congress, anki, decks, dry_run, state, finder=None):
     if not dry_run:
         anki.ensure_setup(list(decks.values()))
     uploaded = state.setdefault("photos", {})
+    gated = {"held": 0, "released": 0}
     for p in people:
         leg = congress.match(p["name"]) if p["kind"] == "Congressperson" else None
         if leg:                                    # Eli's own cards may say "Don Beyer" for "Donald S. Beyer"
@@ -472,7 +473,18 @@ def make_cards(cfg, folk, congress, anki, decks, dry_run, state, finder=None):
             except anki_mod.AnkiError as e:
                 counts["failed"] += 1
                 log.error("note %s failed: %s", n["key"], e)
+        try:                                       # face first: hold the rest until the face is learned
+            faces = ['"Key:%s|photo"' % p["id"]] + [
+                cards.q("Back", f"Name: {x}<") + ' -"note:Folk Basic" -"note:Folk Cloze"'
+                for x in [p["name"]] + p.get("aliases", [])]
+            did = anki.gate(faces, [n["key"] for n in notes if not n["key"].endswith("|photo")])
+            if did:
+                gated[did] += 1
+        except anki_mod.AnkiError as e:
+            log.error("face-first hold for %s failed: %s", p["name"], e)
     log.info("cards: %s", ", ".join(f"{v} {k}" for k, v in counts.items()))
+    if not dry_run:
+        log.info("face first: other cards held for %d people, released for %d", gated["held"], gated["released"])
     return counts
 
 
