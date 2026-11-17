@@ -7,6 +7,7 @@ cards for those people from his networking templates.
     folk_to_anki.py flag  [--dry-run]         calendar -> folk "Met with" / "Meeting planned with" / dates
     folk_to_anki.py cards [--dry-run]         folk -> Anki notes
     folk_to_anki.py run   [--dry-run] [--daily]   flag then cards (--daily: once per day)
+    folk_to_anki.py senators                  the senator ranking, with the date each was released
     folk_to_anki.py test  [--cleanup]         end to end with fixtures, into a test deck
 
 Config: config.env next to this file (see config.env.example). State and caches:
@@ -27,10 +28,12 @@ import config
 import congress as congress_mod
 import folk_api
 import photo_finder
+import senators
 
 log = logging.getLogger("folk-to-anki")
 STATE = config.APP_SUPPORT / "state.json"
 REPORT = config.APP_SUPPORT / "not-in-folk.txt"
+PRIORITY = config.APP_SUPPORT / "senator-priority.txt"
 TEST_DECK = "Folk to Anki test"
 STAFF_DOMAINS = (".senate.gov", ".house.gov", "mail.house.gov")
 
@@ -229,7 +232,7 @@ def gather(cfg, folk, congress, state=None, finder=None):
                 log.warning("%s is marked Congressperson but is not in legislators-current; skipping", name)
                 continue
             facts = congress.facts(leg)
-            rec.update(name=facts["name"], party=facts["party"], state=facts["state"], chamber=facts["chamber"],
+            rec.update(bioguide=facts["bioguide"], roles=facts["roles"], name=facts["name"], party=facts["party"], state=facts["state"], chamber=facts["chamber"],
                        leadership=facts["leadership"], photo_url=rec["photo_url"] or facts["photo_url"])
         if not rec["photo_url"]:
             local = next((x for x in Path(cfg["PHOTOS_DIR"]).glob(p["id"] + ".*")), None)
@@ -284,6 +287,32 @@ def search_photo(cfg, folk, finder, state, groups, rec):
     return url
 
 
+def senator_ranking(congress):
+    names = [x.strip() for x in PRIORITY.read_text().splitlines() if x.strip() and not x.startswith("#")] \
+        if PRIORITY.exists() else []
+    return senators.rank(congress, names)
+
+
+def senator_people(cfg, congress, state, dry_run, skip=()):
+    """The senators released so far (plus today's, at most SENATORS_PER_DAY) as card people. Senators
+    who left the Senate drop out of the data and are simply no longer updated. `skip` holds the
+    bioguide ids already carded through folk, so nobody gets two sets of cards."""
+    total, per_day = int(cfg["SENATORS_TOTAL"]), int(cfg["SENATORS_PER_DAY"])
+    if total <= 0:
+        return []
+    ranked = senator_ranking(congress)
+    released = dict(state.get("senators") or {}) if dry_run else state.setdefault("senators", {})
+    new = senators.release([leg["id"]["bioguide"] for leg, _, _ in ranked], released,
+                           dt.date.today().isoformat(), per_day, total)
+    by_id = {leg["id"]["bioguide"]: leg for leg, _, _ in ranked}
+    if new:
+        log.info("senators: %s %s (%d of %d so far)", "would release" if dry_run else "releasing",
+                 ", ".join(by_id[b]["name"]["official_full"] for b in new), len(released), total)
+        if not dry_run:
+            save_state(state)
+    return [senators.person(congress, by_id[b]) for b in released if b in by_id and b not in skip]
+
+
 def fetch_photo(url):
     if url.startswith("file://"):
         return Path(urllib.request.url2pathname(url[7:])).read_bytes()
@@ -294,6 +323,7 @@ def fetch_photo(url):
 
 def make_cards(cfg, folk, congress, anki, decks, dry_run, state, finder=None):
     people = gather(cfg, folk, congress, state, finder)
+    people += senator_people(cfg, congress, state, dry_run, skip={p.get("bioguide") for p in people})
     log.info("cards: %d people to card", len(people))
     counts = {"added": 0, "updated": 0, "unchanged": 0, "failed": 0}
     if not dry_run:
@@ -381,6 +411,16 @@ def run_test(cfg, anki, cleanup):
     v = meeting_values({P: ["Eli"], N: "2026-11-20"}, "2026-11-05", None, "Eli", "2026-11-07")
     assert v == {M: ["Eli"], P: [], L: "2026-11-05", N: None}, v
     congress = congress_mod.Congress(config.APP_SUPPORT / "congress")
+    ranked = senator_ranking(congress)
+    ids = [leg["id"]["bioguide"] for leg, _, _ in ranked]
+    assert len(ids) == len(set(ids)) >= 50 and ranked[0][1] >= ranked[49][1] > 0, "senator ranking"
+    rel = {}
+    assert senators.release(ids, rel, "2026-11-17", 2, 5) == ids[:2]
+    assert senators.release(ids, rel, "2026-11-17", 2, 5) == [], "at most two per day"
+    assert senators.release(ids, rel, "2026-11-18", 2, 5) == ids[2:4]
+    assert senators.release(ids, rel, "2026-11-19", 2, 5) == ids[4:5], "stops at the total"
+    assert senators.release(ids, rel, "2026-11-20", 2, 5) == []
+    cfg = dict(cfg, SENATORS_TOTAL="2", SENATORS_PER_DAY="2")
     decks = {"dc": TEST_DECK + "::DC", "networking": TEST_DECK + "::Networking"}
     people = gather(cfg, folk, congress)
     kinds = {p["name"]: p["kind"] for p in people}
@@ -390,7 +430,8 @@ def run_test(cfg, anki, cleanup):
     assert "Never Met" not in kinds and "Daves Contact" not in kinds, "only my own meetings get cards"
     state = {}
     counts = make_cards(cfg, folk, congress, anki, decks, dry_run=False, state=state)
-    assert counts["failed"] == 0 and counts["added"] + counts["unchanged"] >= 8, counts
+    assert counts["failed"] == 0 and counts["added"] + counts["unchanged"] >= 14, counts
+    assert len(state["senators"]) == 2, "two senators released into the test deck"
     again = make_cards(cfg, folk, congress, anki, decks, dry_run=False, state=state)
     assert again["added"] == 0 and again["updated"] == 0, f"second run must be a no-op: {again}"
     print(f"\nTEST PASSED. Cards are in Anki deck {TEST_DECK!r}; remove with: folk_to_anki.py test --cleanup")
@@ -398,7 +439,7 @@ def run_test(cfg, anki, cleanup):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["setup", "flag", "cards", "run", "test"])
+    ap.add_argument("command", choices=["setup", "flag", "cards", "run", "senators", "test"])
     ap.add_argument("--dry-run", action="store_true", help="print what would change; write nothing")
     ap.add_argument("--daily", action="store_true", help="exit at once if a run already succeeded today")
     ap.add_argument("--create-fields", action="store_true", help="setup: create the missing shared fields on every tracked group")
@@ -418,6 +459,14 @@ def main(argv=None):
 
     if a.command == "test":
         return run_test(cfg, anki, a.cleanup)
+    if a.command == "senators":
+        ranked = senator_ranking(congress_mod.Congress(config.APP_SUPPORT / "congress"))
+        released = state.get("senators") or {}
+        for i, (leg, score, why) in enumerate(ranked[:int(cfg["SENATORS_TOTAL"])], 1):
+            t = leg["terms"][-1]
+            print(f"{i:2}. {leg['name']['official_full']} ({t['party'][0]}-{t['state']})  score {score}  "
+                  f"{released.get(leg['id']['bioguide'], '')}\n      {'; '.join(why)}")
+        return
     if a.daily and state.get("last_success") == today:
         log.info("already ran today; nothing to do")
         return

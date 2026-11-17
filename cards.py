@@ -3,7 +3,7 @@
 Each note is {"deck", "model", "fields": {...}, "tags", "key", "photo_url"} where key is
 "<folk person id>|<kind>" and is what makes reruns update instead of duplicate.
 Templates (Eli's Roam networking templates, 2026-11):
-  Congressperson: photo -> Name/Role; state; party; chair/ranking member cloze + reverse.
+  Congressperson: photo -> Name/Role; state; party; leadership role cloze; chair/ranking member cloze + reverse.
   DC staffer:     photo -> Name/Role(office); office; party.
   Networking:     photo -> Name/Deal.
 """
@@ -49,6 +49,9 @@ def build(p, decks):
                  deck, ["names_and_faces"], photo=True)
         note("state", BASIC, {"Front": f"{esc(name)}'s state?", "Back": esc(p["state"])}, deck)
         note("party", BASIC, {"Front": f"{esc(name)}'s party?", "Back": esc(p["party"])}, deck)
+        for role in p.get("roles", []):
+            note("role:" + role, CLOZE,
+                 {"Text": f"{{{{c1::{esc(name)}}}}} is the {{{{c2::{esc(role)}}}}}.", "Back Extra": ""}, deck)
         for lead in p.get("leadership", []):
             cid, title, committee = lead["committee_id"], lead["title"], lead["committee"]
             note(f"committee:{cid}", CLOZE,

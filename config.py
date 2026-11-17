@@ -20,6 +20,8 @@ DEFAULTS = {
     "ANKICONNECT_URL": "http://localhost:8765",
     "DECK_DC": "Daily review::*-DC networking",
     "DECK_NETWORKING": "Daily review::*-Networking",
+    "SENATORS_TOTAL": "50",
+    "SENATORS_PER_DAY": "2",
     "PHOTOS_DIR": str(APP_SUPPORT / "photos"),
     "PHOTO_SEARCH": "on",
     "PHOTO_SEARCH_BUDGET_USD": "1.0",

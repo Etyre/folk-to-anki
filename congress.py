@@ -68,6 +68,10 @@ class Congress:
     def match(self, full_name):
         return self.by_name.get(norm(full_name))
 
+    def roles(self, leg):
+        """Current party / floor leadership titles, e.g. "Senate Majority Leader"."""
+        return [r["title"] for r in leg.get("leadership_roles") or [] if not r.get("end")]
+
     def facts(self, leg):
         term = leg["terms"][-1]
         bioguide = leg["id"]["bioguide"]
@@ -90,4 +94,4 @@ class Congress:
                                            "title": t})
         return {"name": leg["name"].get("official_full") or f"{leg['name']['first']} {leg['name']['last']}",
                 "bioguide": bioguide, "chamber": chamber, "party": party, "state": state, "seat": seat,
-                "photo_url": PHOTO.format(bioguide=bioguide), "leadership": leadership}
+                "photo_url": PHOTO.format(bioguide=bioguide), "leadership": leadership, "roles": self.roles(leg)}
