@@ -236,6 +236,8 @@ def gather(cfg, folk, congress, state=None, finder=None):
             rec["photo_url"] = local.as_uri() if local else folk.participant_picture(p)
         if not rec["photo_url"] and finder is not None:
             rec["photo_url"] = search_photo(cfg, folk, finder, state, groups, rec)
+        elif not rec["photo_url"]:                 # agent off or dry run: reuse what it found before
+            rec["photo_url"] = (state.get("photo_search", {}).get(p["id"]) or {}).get("url")
         if not rec["photo_url"]:
             log.warning("no photo for %s (%s): add a Photo URL in folk or %s/%s.jpg; skipping the face card",
                         name, kind, cfg["PHOTOS_DIR"], p["id"])
