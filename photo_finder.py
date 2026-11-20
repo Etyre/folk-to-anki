@@ -1,9 +1,10 @@
 """Finds a headshot for one person with a Claude agent (Claude Agent SDK, so it runs through the
 Claude Code login on this Mac, no separate API key).
 
-The agent gets WebSearch and WebFetch plus four in-process tools: `page_images` lists the
+The agent gets WebSearch and WebFetch plus five in-process tools: `page_images` lists the
 images on a web page, `image_search` returns image-search results, `view_image` shows it one so
-it can check that the face is the right person, and `contact_eli` is the shared LLM-inbox escape hatch. It answers with a structured
+it can check that the face is the right person, `contact_eli` is the shared LLM-inbox escape hatch
+(stops the search), and `note_to_eli` leaves Eli a message while the search carries on. It answers with a structured
 {url, source_page, confidence, reason}; we then download the URL ourselves to prove it is an
 image before anyone uses it. System prompt = shared preamble + the task, per agent-coding rules.
 """
@@ -200,10 +201,21 @@ class Finder:
               llm_contact.CONTACT_TOOL["input_schema"])
         async def contact_eli(args):
             self.contact = llm_contact.record(APP, MODEL, str(args.get("message", "")).strip(), "tool",
-                                              system=self.system, messages=[self._prompt], tools=["contact_eli"])
+                                              system=self.system, messages=[self._prompt],
+                                              tools=["contact_eli", "note_to_eli"])
             return {"content": [{"type": "text", "text": "Delivered to Eli. This task stops here."}]}
 
-        self.server = create_sdk_mcp_server("photos", "1.0.0", [page_images, image_search, view_image, contact_eli])
+        # The SDK runs the tools, so the note is recorded here (the check in find() only sees the final text)
+        # and the search carries on: self.contact stays unset.
+        @tool(llm_contact.NOTE_TOOL["name"], llm_contact.NOTE_TOOL["description"],
+              llm_contact.NOTE_TOOL["input_schema"])
+        async def note_to_eli(args):
+            llm_contact.record(APP, MODEL, str(args.get("message", "")).strip(), "note", system=self.system,
+                               messages=[self._prompt], tools=["contact_eli", "note_to_eli"], extra={"halts": False})
+            return {"content": [{"type": "text", "text": llm_contact.NOTE_RESULT_TEXT}]}
+
+        self.server = create_sdk_mcp_server("photos", "1.0.0", [page_images, image_search, view_image, contact_eli,
+                                                                note_to_eli])
 
     def find(self, name, context):
         """-> {"url", "source_page", "confidence", "reason"} or None. Raises ContactRequested."""
@@ -226,7 +238,7 @@ class Finder:
         if result is None:
             return None
         rec = llm_contact.check(app=APP, model=MODEL, system=self.system, messages=[self._prompt],
-                                response=result.get("reason", ""), tools=["contact_eli"])
+                                response=result.get("reason", ""), tools=["contact_eli", "note_to_eli"])
         if rec:
             raise ContactRequested(rec["message"])
         return result
@@ -239,7 +251,7 @@ class Finder:
             mcp_servers={"photos": self.server},
             allowed_tools=["WebSearch", "WebFetch", "mcp__photos__page_images", "mcp__photos__image_search",
                            "mcp__photos__view_image",
-                           "mcp__photos__contact_eli"],
+                           "mcp__photos__contact_eli", "mcp__photos__note_to_eli"],
             permission_mode="dontAsk",
             setting_sources=[],
             max_turns=self.max_turns,

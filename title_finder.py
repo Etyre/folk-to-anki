@@ -4,7 +4,8 @@
 Why: a face card should say "Role: x at y", and for many contacts folk only knows the employer.
 One session handles the whole batch. folk_to_anki.py writes each confident answer to the job
 title field in folk and adds a folk note saying it came from Eli's Claude, with the source.
-System prompt = shared preamble + the task, per agent-coding rules; contact_eli stops the run.
+System prompt = shared preamble + the task, per agent-coding rules; contact_eli stops the run,
+note_to_eli leaves Eli a message and the run carries on.
 """
 import asyncio
 import datetime as dt
@@ -69,13 +70,22 @@ def research(people, budget_usd=5.0, max_turns=150):
           llm_contact.CONTACT_TOOL["input_schema"])
     async def contact_eli(args):
         contact.update(llm_contact.record(APP, MODEL, str(args.get("message", "")).strip(), "tool",
-                                          system=system, messages=[prompt], tools=["contact_eli"]))
+                                          system=system, messages=[prompt], tools=["contact_eli", "note_to_eli"]))
         return {"content": [{"type": "text", "text": "Delivered to Eli. This task stops here."}]}
+
+    # The SDK runs the tools, so the note is recorded here (the check below only sees the final text) and the
+    # run carries on: nothing is set in `contact`.
+    @tool(llm_contact.NOTE_TOOL["name"], llm_contact.NOTE_TOOL["description"],
+          llm_contact.NOTE_TOOL["input_schema"])
+    async def note_to_eli(args):
+        llm_contact.record(APP, MODEL, str(args.get("message", "")).strip(), "note", system=system,
+                           messages=[prompt], tools=["contact_eli", "note_to_eli"], extra={"halts": False})
+        return {"content": [{"type": "text", "text": llm_contact.NOTE_RESULT_TEXT}]}
 
     options = ClaudeAgentOptions(
         model=MODEL, system_prompt=system, tools=["WebSearch", "WebFetch"],
-        mcp_servers={"inbox": create_sdk_mcp_server("inbox", "1.0.0", [contact_eli])},
-        allowed_tools=["WebSearch", "WebFetch", "mcp__inbox__contact_eli"],
+        mcp_servers={"inbox": create_sdk_mcp_server("inbox", "1.0.0", [contact_eli, note_to_eli])},
+        allowed_tools=["WebSearch", "WebFetch", "mcp__inbox__contact_eli", "mcp__inbox__note_to_eli"],
         permission_mode="dontAsk", setting_sources=[], max_turns=max_turns, max_budget_usd=budget_usd,
         output_format={"type": "json_schema", "schema": OUTPUT_SCHEMA},
         max_buffer_size=16 * 1024 * 1024,
@@ -100,7 +110,7 @@ def research(people, budget_usd=5.0, max_turns=150):
     if not isinstance(out, dict):
         return None
     rec = llm_contact.check(app=APP, model=MODEL, system=system, messages=[prompt],
-                            response=" ".join(e.get("note", "") for e in out["people"]), tools=["contact_eli"])
+                            response=" ".join(e.get("note", "") for e in out["people"]), tools=["contact_eli", "note_to_eli"])
     if rec:
         raise ContactRequested(rec["message"])
     return {e["id"]: e for e in out["people"]}

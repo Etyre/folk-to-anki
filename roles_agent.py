@@ -7,7 +7,8 @@ December and January, the speaker on the first day). Nothing structured publishe
 agent searches the news, and answers with every post it could establish, each marked confirmed
 (the vote or the official announcement has happened) or expected, each with a source URL.
 folk_to_anki.py stores the answer in congress-roles.json and only confirmed posts become cards.
-System prompt = shared preamble + the task, per agent-coding rules; contact_eli stops the run.
+System prompt = shared preamble + the task, per agent-coding rules; contact_eli stops the run,
+note_to_eli leaves Eli a message and the run carries on.
 """
 import asyncio
 import datetime as dt
@@ -87,13 +88,22 @@ def research(congress_number, starts, on_file, committees, budget_usd=5.0, max_t
           llm_contact.CONTACT_TOOL["input_schema"])
     async def contact_eli(args):
         contact.update(llm_contact.record(APP, MODEL, str(args.get("message", "")).strip(), "tool",
-                                          system=system, messages=[prompt], tools=["contact_eli"]))
+                                          system=system, messages=[prompt], tools=["contact_eli", "note_to_eli"]))
         return {"content": [{"type": "text", "text": "Delivered to Eli. This task stops here."}]}
+
+    # The SDK runs the tools, so the note is recorded here (the check below only sees the final text) and the
+    # run carries on: nothing is set in `contact`.
+    @tool(llm_contact.NOTE_TOOL["name"], llm_contact.NOTE_TOOL["description"],
+          llm_contact.NOTE_TOOL["input_schema"])
+    async def note_to_eli(args):
+        llm_contact.record(APP, MODEL, str(args.get("message", "")).strip(), "note", system=system,
+                           messages=[prompt], tools=["contact_eli", "note_to_eli"], extra={"halts": False})
+        return {"content": [{"type": "text", "text": llm_contact.NOTE_RESULT_TEXT}]}
 
     options = ClaudeAgentOptions(
         model=MODEL, system_prompt=system, tools=["WebSearch", "WebFetch"],
-        mcp_servers={"inbox": create_sdk_mcp_server("inbox", "1.0.0", [contact_eli])},
-        allowed_tools=["WebSearch", "WebFetch", "mcp__inbox__contact_eli"],
+        mcp_servers={"inbox": create_sdk_mcp_server("inbox", "1.0.0", [contact_eli, note_to_eli])},
+        allowed_tools=["WebSearch", "WebFetch", "mcp__inbox__contact_eli", "mcp__inbox__note_to_eli"],
         permission_mode="dontAsk", setting_sources=[], max_turns=max_turns, max_budget_usd=budget_usd,
         output_format={"type": "json_schema", "schema": OUTPUT_SCHEMA},
         max_buffer_size=16 * 1024 * 1024,
@@ -118,7 +128,7 @@ def research(congress_number, starts, on_file, committees, budget_usd=5.0, max_t
     if not isinstance(out, dict):
         return None
     rec = llm_contact.check(app=APP, model=MODEL, system=system, messages=[prompt],
-                            response=out.get("notes", ""), tools=["contact_eli"])
+                            response=out.get("notes", ""), tools=["contact_eli", "note_to_eli"])
     if rec:
         raise ContactRequested(rec["message"])
     return out

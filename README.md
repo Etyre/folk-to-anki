@@ -53,10 +53,10 @@ in the same fields. This tool only ever adds or removes `MY_NAME`.
    the Claude Code login on this Mac, so there is no API key to manage. The face card is the card
    that matters most, so the agent is told to search thoroughly and may spend up to
    `PHOTO_SEARCH_BUDGET_USD` ($5) and 120 turns per person. The agent has WebSearch, WebFetch,
-   and four in-process tools: `page_images` (lists a page's images with alt text), `image_search`
+   and five in-process tools: `page_images` (lists a page's images with alt text), `image_search`
    (Bing image results: image URL, title, source page), `view_image`
    (shows it the picture so it can check the face is the right person) and the shared
-   `contact_eli`. It answers with a structured `{url, source_page, confidence, reason}`; low
+   `contact_eli` and `note_to_eli`. It answers with a structured `{url, source_page, confidence, reason}`; low
    confidence is discarded, the URL is downloaded to prove it is an image, and a hit is kept in
    `state.json` and, where the person's group has a **Photo URL** field, written to folk so it is
    visible and overridable in the CRM.
@@ -65,7 +65,8 @@ in the same fields. This tool only ever adds or removes `MY_NAME`.
    organisation and the start of the email address; the name is kept in `state.json` and used on
    the cards (folk itself is not changed). A nameless person who cannot be identified gets no cards. The system
    prompt starts with the shared preamble; a `contact_eli` call or `@ELI:` line is recorded in
-   the LLM inbox and stops the run (exit code 2).
+   the LLM inbox and stops the run (exit code 2). A `note_to_eli` call (all three agents offer it, since
+   2026-11-20) is recorded in the same inbox by the tool's handler and the agent carries on; its answer is used as usual.
 5. `cards.py` turns a person into notes per template (see the docstring there). Every note has a
    `Key` field `<folk person id>|<kind>`; `anki.py` searches Anki for that key and adds, updates
    or leaves the note alone. Photos go into Anki's media folder as `folk-<id>.jpg`. Note types
@@ -164,6 +165,7 @@ in the same fields. This tool only ever adds or removes `MY_NAME`.
 | `config.py` | reads `config.env` |
 | `.venv/` | Python with `anthropic` and `claude-agent-sdk` (untracked; see Common tasks) |
 | `tests/fixtures/` | fake folk people and a fake calendar for `test` |
+| `tests/test_note_to_eli.py` | offline check of the three agents' inbox tools: a note is recorded once and the run carries on, `contact_eli` still stops it (no model call, throwaway inbox) |
 | `com.elityre.folk-to-anki.plist`, `install.sh` | launchd agent (07:30, 12:30, 18:30) and installer |
 
 ## Runtime locations
@@ -194,6 +196,7 @@ cp config.env.example config.env            # then fill in FOLK_API_KEY and CALE
 ./folk_to_anki.py run                       # do it all for real
 ./folk_to_anki.py test                      # end to end with fixtures into deck "Folk to Anki test"
 ./folk_to_anki.py test --cleanup            # delete that test deck
+.venv/bin/python tests/test_note_to_eli.py  # the agents' contact_eli / note_to_eli handling, fake agent session, nothing sent
 .venv/bin/python photo_finder.py "Jane Doe" "legislative assistant, Office of Sen. X"   # try the photo agent
 ./install.sh                                # install / restart the launchd agent
 launchctl bootout gui/$(id -u)/com.elityre.folk-to-anki   # stop it
