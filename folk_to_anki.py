@@ -510,12 +510,29 @@ def make_cards(cfg, folk, congress, anki, decks, dry_run, state, finder=None):
     if finder is not None and cfg["TITLES_AGENT"].lower() in ("on", "true", "yes", "1"):
         fill_from_claude(cfg, folk, state, people)
     people += member_people(cfg, congress, state, dry_run, skip={p.get("bioguide") for p in people})
+    # Member before staff (Eli, 2026-11-19): a staffer's member of Congress gets cards too, even
+    # outside the top-N schedule, unless they are leaving; the staffer's cards wait for the
+    # member's face card (the hold is in the loop below).
+    nxt = top_members.load_next(NEXT_CONGRESS, congress, ROLES)
+    incoming = {leg["id"]["bioguide"]: (leg, ch) for ch in CHAMBER_KEYS for leg, _, _ in member_ranking(congress, ch, nxt)}
+    for b in sorted({p["office_bioguide"] for p in people if p.get("office_bioguide")} - {p.get("bioguide") for p in people}):
+        if b in incoming:
+            people.append(top_members.person(congress, *incoming[b], nxt))
+            log.info("cards: %s is carded because a staffer of theirs is", people[-1]["name"])
+    by_bioguide = {p["bioguide"]: p for p in people if p.get("bioguide")}
+    people.sort(key=lambda p: p["kind"] != "Congressperson")   # members first, so their cards exist when staffers are held
+
+    def faces(x):                                  # the tool's face card for x, or Eli's own
+        leg = congress.match(x["name"]) if x["kind"] == "Congressperson" else None
+        names = [x["name"]] + ([f"{n} {leg['name']['last']}" for n in (leg["name"]["first"], leg["name"].get("nickname")) if n] if leg else [])
+        return ['"Key:%s|photo"' % x["id"]] + [cards.q("Back", f"Name: {n}<") + ' -"note:Folk Basic" -"note:Folk Cloze"'
+                                                for n in names]
     log.info("cards: %d people to card", len(people))
     counts = {"added": 0, "updated": 0, "unchanged": 0, "skipped": 0, "failed": 0}
     if not dry_run:
         anki.ensure_setup(list(decks.values()))
     uploaded = state.setdefault("photos", {})
-    gated = {"held": 0, "released": 0}
+    gated = {"held": 0, "released": 0, "member": 0}
     for p in people:
         leg = congress.match(p["name"]) if p["kind"] == "Congressperson" else None
         if leg:                                    # Eli's own cards may say "Don Beyer" for "Donald S. Beyer"
@@ -560,18 +577,32 @@ def make_cards(cfg, folk, congress, anki, decks, dry_run, state, finder=None):
             except anki_mod.AnkiError as e:
                 counts["failed"] += 1
                 log.error("note %s failed: %s", n["key"], e)
+        try:
+            if p["kind"] == "Congressperson":
+                stale = anki.retire(p["id"], {n["key"] for n in notes})
+                if stale:
+                    log.info("%s: %d post cards no longer apply; suspended and tagged %s", p["name"], stale, anki.STALE)
+        except anki_mod.AnkiError as e:
+            log.error("retiring old post cards of %s failed: %s", p["name"], e)
         try:                                       # face first: hold the rest until the face is learned
-            faces = ['"Key:%s|photo"' % p["id"]] + [
-                cards.q("Back", f"Name: {x}<") + ' -"note:Folk Basic" -"note:Folk Cloze"'
-                for x in [p["name"]] + p.get("aliases", [])]
-            did = anki.gate(faces, [n["key"] for n in notes if not n["key"].endswith("|photo")])
-            if did:
-                gated[did] += 1
+            keys = [n["key"] for n in notes]
+            member = by_bioguide.get(p.get("office_bioguide"))
+            if member and anki.learned(faces(member)) is False:
+                # member first: everything of the staffer's, their own face card included, waits
+                if anki.gate(faces(member), keys) == "held":
+                    gated["member"] += 1
+            else:
+                if member:
+                    anki.gate(faces(member), [k for k in keys if k.endswith("|photo")])   # lets the face card go
+                did = anki.gate(faces(p), [k for k in keys if not k.endswith("|photo")])
+                if did:
+                    gated[did] += 1
         except anki_mod.AnkiError as e:
             log.error("face-first hold for %s failed: %s", p["name"], e)
     log.info("cards: %s", ", ".join(f"{v} {k}" for k, v in counts.items()))
     if not dry_run:
-        log.info("face first: other cards held for %d people, released for %d", gated["held"], gated["released"])
+        log.info("face first: other cards held for %d people, released for %d; member first: %d staffers newly held",
+                 gated["held"], gated["released"], gated["member"])
     return counts
 
 

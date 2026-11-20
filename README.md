@@ -216,6 +216,18 @@ direct image link) overrides the photo, since folk's API exposes no profile pict
 - The photo agent needs the `claude` CLI (`~/.local/bin/claude`) logged in; its usage is billed to
   that Claude account. The launchd plist puts `~/.local/bin` on PATH for this reason.
 
+## Card order and wording rules added 2026-11-19
+
+- **Member before staff.** A staffer's member of Congress is carded too, even outside the top-N
+  schedule (not if they are leaving). Until the member's face card (the tool's or Eli's own) is
+  learned, all of the staffer's never-seen cards are held, their face card included, with the same
+  `folk-waiting-for-face` tag as face first. Cards Eli has already started are never pulled back.
+- **Leadership cards** read "Incoming Senate Minority Leader:" and "John Thune is the incoming
+  {{c1::Senate Minority Leader}}." "Incoming" becomes "Current" by itself on the day that Congress
+  convenes (`roles_start`). Parentheticals in the agent's titles are dropped, from the key as well.
+- **Outdated post cards** (post lost, or title reworded so the key changed) are suspended and
+  tagged `folk-stale`, never deleted, and come back if the tool generates them again.
+
 ## Gotchas learned
 
 - **A replaced photo needs a new filename.** Anki keeps showing its cached copy of an image for

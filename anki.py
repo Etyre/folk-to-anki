@@ -72,6 +72,36 @@ class Anki:
 
     WAITING = "folk-waiting-for-face"
 
+    def learned(self, face_queries):
+        """Has a names-and-faces card graduated to review? None when there is no such card."""
+        face = [i for fq in face_queries for i in self.call("findNotes", query=fq)]
+        if not face:
+            return None
+        cards = self.call("findCards", query="nid:" + ",".join(map(str, face)))
+        return any(c["type"] in (2, 3) for c in self.call("cardsInfo", cards=cards))
+
+    STALE = "folk-stale"
+
+    def retire(self, person_id, keys):
+        """A member's post cards that the tool no longer generates (the post went to someone else,
+        or its title was reworded and got a new key) are suspended and tagged, never deleted;
+        one that is generated again comes back. -> how many were newly suspended."""
+        ids = [i for kind in ("role", "committee")
+               for i in self.call("findNotes", query=f'"Key:{person_id}|{kind}*"')]
+        if not ids:
+            return 0
+        info = self.call("notesInfo", notes=ids)
+        gone = [n["noteId"] for n in info if n["fields"]["Key"]["value"] not in keys and self.STALE not in n["tags"]]
+        back = [n["noteId"] for n in info if n["fields"]["Key"]["value"] in keys and self.STALE in n["tags"]]
+        nid = lambda x: "nid:" + ",".join(map(str, x))
+        if gone:
+            self.call("suspend", cards=self.call("findCards", query=nid(gone)))
+            self.call("addTags", notes=gone, tags=self.STALE)
+        if back:
+            self.call("unsuspend", cards=self.call("findCards", query=nid(back)))
+            self.call("removeTags", notes=back, tags=self.STALE)
+        return len(gone)
+
     def gate(self, face_queries, keys):
         """Face first (Eli, 2026-11-17): a person's other cards stay suspended until their
         names-and-faces card (the tool's or his own) has graduated to a review card, then come

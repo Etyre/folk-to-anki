@@ -213,4 +213,6 @@ def person(congress, leg, chamber, nxt=None):
             "kind": "Congressperson", "party": f["party"], "state": f["state"],
             "chamber": CHAMBERS[chamber]["title"], "leadership": leadership,
             "roles": [r for r in roles(congress, leg, chamber, nxt) if not r.endswith(EXPECTED)],
+            # set when the posts are the incoming Congress's: cards say "incoming" until that date
+            "roles_start": nxt.get("starts") if ((nxt or {}).get(chamber) or {}).get("roles") is not None else None,
             "office": "", "deal": "", "photo_url": f["photo_url"]}

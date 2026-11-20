@@ -10,6 +10,7 @@ Templates (Eli's Roam networking templates, 2026-11):
 Whenever the answer is a person's name, the answer side also shows that person's photo (Eli,
 2026-11-17): the role and committee cards show the member, a staffer's office card shows the boss.
 """
+import datetime as dt
 import html
 import re
 
@@ -109,13 +110,19 @@ def build(p, decks):
         face = img(p) if p.get("photo_url") else ""
         answer = esc(name) + (f"<br>{face}" if face else "")
         roles = [r for r in p.get("roles", []) if "unconfirmed" not in r.lower()]   # a placeholder is not a post
+        # Eli, 2026-11-19: "Current Senate Minority Leader", no parenthetical. Until the Congress
+        # these posts belong to has convened the word is "Incoming", because today someone else
+        # still holds the post. Keys use the title without the
+        # parenthetical, which the roles agent words differently from one run to the next.
+        when = "incoming" if (p.get("roles_start") or "") > dt.date.today().isoformat() else "current"
+        plain = lambda r: re.sub(r"\s*\([^)]*\)", "", r).strip()
         for role in roles:
-            also = "".join(f" (and also the {esc(r)})" for r in roles if r != role)
-            note("role:" + role, CLOZE,
-                 {"Text": f"{esc(name)} is the {{{{c1::{esc(role)}}}}}{also}.", "Back Extra": face}, deck,
-                 older=lambda n, role=role: q("Text", n, role))
-            note("role_rev:" + role, BASIC, {"Front": f"{esc(role)}:", "Back": answer}, deck, photo=True,
-                 older=lambda n, role=role: q("Front", role) + " " + q("Back", n))
+            also = "".join(f" (and also the {esc(plain(r))})" for r in roles if r != role)
+            note("role:" + plain(role), CLOZE,
+                 {"Text": f"{esc(name)} is the {when} {{{{c1::{esc(plain(role))}}}}}{also}.", "Back Extra": face}, deck,
+                 older=lambda n, role=role: q("Text", n, plain(role)))
+            note("role_rev:" + plain(role), BASIC, {"Front": f"{when.title()} {esc(plain(role))}:", "Back": answer}, deck,
+                 photo=True, older=lambda n, role=role: q("Front", plain(role)) + " " + q("Back", n))
         leads = p.get("leadership", [])
         for lead in leads:
             cid, title, committee = lead["committee_id"], lead["title"], short_committee(lead)
