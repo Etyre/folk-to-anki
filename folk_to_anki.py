@@ -128,7 +128,12 @@ def meeting_values(have, last_met, next_meeting, me, today):
             folk_api.LAST_MET: last, folk_api.NEXT_MEETING: nxt}
 
 
-def flag(cfg, folk, dry_run):
+def flag(cfg, folk, dry_run, state=None):
+    state = state if state is not None else {}
+    # met_written: {person id: the Last met date this tool tagged}. If I am no longer in Met with
+    # for a meeting already tagged, someone removed me by hand (the invite did not mean we met),
+    # and the same calendar event must not put me back. A later meeting tags again.
+    written = state.setdefault("met_written", {})
     contacts = calendar_contacts(cfg)
     log.info("calendar: %d external people on meetings", len(contacts))
     groups = tracked_groups(cfg, folk)
@@ -167,9 +172,16 @@ def flag(cfg, folk, dry_run):
             outside.append(p.get("fullName") or p["id"])
             continue
         patch = {}
+        last = m["last"].isoformat() if m["last"] else None
+        tagged = any(me in (folk_api.field_values(p, g).get(folk_api.MET_WITH) or []) for g in gids)
+        if last and not tagged and written.get(p["id"], "") >= last:
+            log.info("%s: Met with %s was cleared by hand for %s; leaving it cleared", p["fullName"], me, last)
+            last = None
+        elif last and not dry_run:
+            written[p["id"]] = last
         for gid in gids:
             have = folk_api.field_values(p, gid)
-            want = meeting_values(have, m["last"].isoformat() if m["last"] else None,
+            want = meeting_values(have, last,
                                   m["next"].isoformat() if m["next"] else None, me, today)
             diff = {k: v for k, v in want.items()
                     if (sorted(have.get(k) or []) if isinstance(v, list) else have.get(k) or None) != v}
@@ -191,6 +203,8 @@ def flag(cfg, folk, dry_run):
     if not dry_run:
         REPORT.parent.mkdir(parents=True, exist_ok=True)
         REPORT.write_text(f"Calendar contacts with no folk record, {dt.date.today()}\n\n" + "\n".join(lines) + "\n")
+    if not dry_run:
+        save_state(state)
     log.info("flag: %d folk people %s, %d calendar contacts not in folk (list in %s)",
              changed, "would change" if dry_run else "changed", len(unmatched), REPORT)
     return changed, unmatched
@@ -709,7 +723,7 @@ def main(argv=None):
                 folk.create_field(gid, f)
         return
     if a.command in ("flag", "run"):
-        flag(cfg, folk, a.dry_run)
+        flag(cfg, folk, a.dry_run, state)
     if a.command in ("cards", "run"):
         congress = congress_mod.Congress(config.APP_SUPPORT / "congress")
         decks = {"dc": cfg["DECK_DC"], "networking": cfg["DECK_NETWORKING"]}

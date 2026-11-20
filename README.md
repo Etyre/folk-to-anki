@@ -25,6 +25,10 @@ in the same fields. This tool only ever adds or removes `MY_NAME`.
    - **Met with** / **Meeting planned with** (multi-select of first names): `MY_NAME` is added when
      the calendar has a past / upcoming meeting, and removed from Meeting planned with when there
      is no upcoming one. Other names are never touched.
+   - **Removing yourself by hand sticks.** An invite is not proof of a meeting. If you remove
+     `MY_NAME` from Met with in folk, the tool sees that it had already tagged that meeting
+     (`met_written` in `state.json`) and does not add you back; a later meeting tags again.
+     The person's cards already in Anki are not deleted for you.
    - **Last met** only moves forward. **Next meeting** takes the earlier of the existing future
      date and mine, and is cleared once it is in the past (`meeting_values` in `folk_to_anki.py`).
 
