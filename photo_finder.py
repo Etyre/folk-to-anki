@@ -68,9 +68,9 @@ photo to something we know about them (employer, role, city, field). Reject what
 connect. A wrong photo is worse than no photo, so if nothing can be confirmed after a thorough
 search, answer with url null and say what you tried.
 
-If the record has no name, work out who the person is from the organisation and the email hint,
-and give their full name in `name`; leave `name` null when the record already had one or you
-cannot establish it.
+If the record has no name, or only a first name, work out who the person is from the organisation
+and the email hint, and give their full name in `name`; leave `name` null when the record already
+had a full name or you cannot establish it.
 
 Answer only with the structured output: url, source_page, confidence (high / medium / low), name,
 and a one-sentence reason."""
@@ -81,7 +81,7 @@ OUTPUT_SCHEMA = {
         "url": {"type": ["string", "null"], "description": "direct image URL, or null"},
         "source_page": {"type": ["string", "null"]},
         "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
-        "name": {"type": ["string", "null"], "description": "full name, only when the record had none"},
+        "name": {"type": ["string", "null"], "description": "full name, only when the record had none or only a first name"},
         "reason": {"type": "string"},
     },
     "required": ["url", "source_page", "confidence", "name", "reason"],

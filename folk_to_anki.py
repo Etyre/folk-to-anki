@@ -230,8 +230,13 @@ def gather(cfg, folk, congress, state=None, finder=None):
         if card == "Skip" or not (card or mine):
             continue
         name = p.get("fullName") or f"{p.get('firstName', '')} {p.get('lastName', '')}".strip()
-        # a folk record with no name: use the name the photo agent worked out on an earlier run
-        name = name or (state.get("photo_search", {}).get(p["id"]) or {}).get("name") or ""
+        if "@" in name:                            # folk shows the email where it has no name; that is not a name
+            name = ""
+        # a folk record with no name, or only a first name ("Tristan"): use the full name the
+        # photo agent worked out on an earlier run
+        known = (state.get("photo_search", {}).get(p["id"]) or {}).get("name") or ""
+        if known and (not name or (" " not in name and known.lower().startswith(name.lower() + " "))):
+            name = known
         emails = [e.lower() for e in p.get("emails") or []]
         leg = congress.match(name)
         kind = card
@@ -300,6 +305,8 @@ def search_photo(cfg, folk, finder, state, groups, rec):
         f"email domain {p['emails'][0].split('@')[1]}" if p.get("emails") else "",
         # only for a nameless record: the part before the @ is often the name or initials
         f"email starts with '{p['emails'][0].split('@')[0]}'" if p.get("emails") and not rec["name"] else "",
+        "only a first name is on record: give the full name in `name` if you can establish it"
+        if rec["name"] and " " not in rec["name"] else "",
         f"notes: {p.get('description')}" if p.get("description") else "") if x)
     log.info("photo search: %s (%s)", rec["name"], context)
     try:
@@ -317,7 +324,8 @@ def search_photo(cfg, folk, finder, state, groups, rec):
         url = None
     searched[rec["id"]] = {"date": today.isoformat(), "url": url, "result": res,
                            **({"name": prev["name"]} if prev and prev.get("name") else {})}
-    if not rec["name"] and (res or {}).get("name") and res.get("confidence") != "low":
+    partial = bool(rec["name"]) and " " not in rec["name"] and str((res or {}).get("name") or "").lower().startswith(rec["name"].lower() + " ")
+    if (not rec["name"] or partial) and (res or {}).get("name") and res.get("confidence") != "low":
         rec["name"] = searched[rec["id"]]["name"] = res["name"]
         log.info("photo search: the folk record %s has no name; identified as %s", p.get("emails") or p["id"], res["name"])
     save_state(state)
@@ -458,8 +466,9 @@ def fill_from_claude(cfg, folk, state, people):
     done = state.setdefault("folk_writes", {})
     for rec in people:                             # names
         p, found = rec.get("folk"), state.get("photo_search", {}).get(rec["id"]) or {}
-        if not p or p.get("fullName") or not found.get("name") or done.get(rec["id"] + "|name"):
-            continue
+        full = p.get("fullName") or "" if p else ""
+        if not p or (" " in full.strip() and "@" not in full) or not found.get("name") or done.get(rec["id"] + "|name"):
+            continue                               # folk already has a full name, or there is nothing to add
         if (found.get("result") or {}).get("confidence") != "high":
             continue
         first, _, last = found["name"].partition(" ")

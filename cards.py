@@ -143,7 +143,8 @@ def build(p, decks):
                  deck, ["names_and_faces"], photo=True, older=lambda n: q("Back", "Name: " + n + "<"))
         if p.get("office"):
             boss = f"<br>{member_img(p['office_bioguide'])}" if p.get("office_bioguide") else ""
-            note("office", BASIC, {"Front": f"{esc(name)}'s office?", "Back": esc(p["office"]) + boss}, deck,
+            office = p["office"][4:] if p["office"].startswith("PSM ") else p["office"]   # folk shorthand, see staff_role
+            note("office", BASIC, {"Front": f"{esc(name)}'s office?", "Back": esc(office) + boss}, deck,
                  older=lambda n: q("Front", n, "s office?"))
         if p.get("party"):
             note("party", BASIC, {"Front": f"{esc(name)}'s party?", "Back": esc(p["party"])}, deck,

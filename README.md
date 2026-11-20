@@ -251,6 +251,13 @@ and anyone (person or agent) working on the project by hand:
 
 ## Gotchas learned
 
+- **folk's `fullName` can be an email or just a first name.** Three cards read "Name: Kathryn",
+  "Name: Tristan", "Name: Emilia" and one "Name: ml@catalyst.wf" (found 2026-11-20). An email
+  is now treated as no name, and a one-word name as incomplete: the photo agent is asked for
+  the full name, cards use it, and a high-confidence one is written to folk with the usual note.
+  Medium-confidence identifications appear on the card but are not written to folk.
+- **"PSM " in the folk Office field** is shorthand for professional staff member. It is removed
+  from both the role line and the "office?" answer.
 - **A replaced photo needs a new filename.** Anki keeps showing its cached copy of an image for
   as long as the filename is the same, even after the media file is overwritten (seen
   2026-11-19: a 792 px file was in the media folder and the card still showed the 200 px one).
