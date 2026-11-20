@@ -21,16 +21,18 @@ def esc(s):
     return html.escape(str(s or ""), quote=False)
 
 
-def img(person_id):
-    return f'<img src="folk-{person_id}.jpg">'
+def img(p):
+    # photo_file: a replaced photo gets a new filename, because Anki keeps showing its cached
+    # copy of a picture for as long as the filename stays the same
+    return '<img src="%s">' % (p.get("photo_file") or "folk-%s.jpg" % p["id"])
 
 
 def member_img(bioguide):
     return f'<img src="folk-member-{bioguide}.jpg">'
 
 
-def photo_front(person_id):
-    return f'<div class="front-side">{img(person_id)}</div>'
+def photo_front(p):
+    return f'<div class="front-side">{img(p)}</div>'
 
 
 def listing(pairs):
@@ -94,7 +96,7 @@ def build(p, decks):
         deck = decks["dc"]
         role = f"{PARTY_ADJ.get(p['party'], p['party'])} {p['chamber']}"
         if p.get("photo_url"):
-            note("photo", BASIC, {"Front": photo_front(pid), "Back": listing([("Name", name), ("Role", role)])},
+            note("photo", BASIC, {"Front": photo_front(p), "Back": listing([("Name", name), ("Role", role)])},
                  deck, ["names_and_faces"], photo=True, older=lambda n: q("Back", "Name: " + n + "<"))
         note("state", BASIC, {"Front": f"{esc(name)}'s state?", "Back": esc(p["state"])}, deck,
              older=lambda n: q("Front", n, "s state?"))
@@ -104,7 +106,7 @@ def build(p, decks):
         # post is blanked, and the name is asked by a separate card, "Chair of Senate Commerce:" ->
         # name and photo. Someone with two posts of a kind gets the other one spelled out, so no
         # prompt has two right answers.
-        face = img(pid) if p.get("photo_url") else ""
+        face = img(p) if p.get("photo_url") else ""
         answer = esc(name) + (f"<br>{face}" if face else "")
         roles = [r for r in p.get("roles", []) if "unconfirmed" not in r.lower()]   # a placeholder is not a post
         for role in roles:
@@ -130,7 +132,7 @@ def build(p, decks):
     elif kind == "DC staffer":
         deck = decks["dc"]
         if p.get("photo_url"):
-            note("photo", BASIC, {"Front": photo_front(pid), "Back": listing([("Name", name), staff_role(p)])},
+            note("photo", BASIC, {"Front": photo_front(p), "Back": listing([("Name", name), staff_role(p)])},
                  deck, ["names_and_faces"], photo=True, older=lambda n: q("Back", "Name: " + n + "<"))
         if p.get("office"):
             boss = f"<br>{member_img(p['office_bioguide'])}" if p.get("office_bioguide") else ""
@@ -143,6 +145,6 @@ def build(p, decks):
     else:  # Networking
         deck = decks["networking"]
         if p.get("photo_url"):
-            note("photo", BASIC, {"Front": photo_front(pid), "Back": listing([("Name", name), (p.get("deal_label") or "Deal", p["deal"])])},
+            note("photo", BASIC, {"Front": photo_front(p), "Back": listing([("Name", name), (p.get("deal_label") or "Deal", p["deal"])])},
                  deck, ["names_and_faces"], photo=True, older=lambda n: q("Back", "Name: " + n + "<"))
     return notes

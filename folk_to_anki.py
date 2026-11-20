@@ -15,6 +15,7 @@ Config: config.env next to this file (see config.env.example). State and caches:
 ~/Library/Application Support/FolkToAnki/. Log: ~/Library/Logs/folk-to-anki.log.
 """
 import argparse
+import hashlib
 import datetime as dt
 import json
 import logging
@@ -520,6 +521,15 @@ def make_cards(cfg, folk, congress, anki, decks, dry_run, state, finder=None):
         if leg:                                    # Eli's own cards may say "Don Beyer" for "Donald S. Beyer"
             n = leg["name"]
             p["aliases"] = [f"{f} {n['last']}" for f in (n["first"], n.get("nickname")) if f]
+        # A replaced photo is stored under a new filename (see cards.img). stamp = what was
+        # uploaded: the URL, plus the file's modified time for a local override.
+        stamp, files = p.get("photo_url"), state.setdefault("photo_files", {})
+        if stamp and stamp.startswith("file://"):
+            stamp += "#%d" % Path(urllib.request.url2pathname(stamp[7:])).stat().st_mtime
+        if stamp:
+            p["photo_file"] = files.get(p["id"]) or f"folk-{p['id']}.jpg"
+            if uploaded.get(p["id"]) not in (None, stamp):
+                p["photo_file"] = f"folk-{p['id']}-{hashlib.sha1(stamp.encode()).hexdigest()[:6]}.jpg"
         notes = cards.build(p, decks)
         if dry_run:
             print(f"\n== {p['name']} [{p['kind']}] photo={'yes' if p.get('photo_url') else 'NO'}")
@@ -529,9 +539,9 @@ def make_cards(cfg, folk, congress, anki, decks, dry_run, state, finder=None):
                 print(f"  [{n['deck']}] {front}  ->  {back}")
             continue
         try:
-            if p.get("photo_url") and uploaded.get(p["id"]) != p["photo_url"]:
-                anki.store_photo(f"folk-{p['id']}.jpg", fetch_photo(p["photo_url"]))
-                uploaded[p["id"]] = p["photo_url"]
+            if stamp and uploaded.get(p["id"]) != stamp:
+                anki.store_photo(p["photo_file"], fetch_photo(p["photo_url"]))
+                uploaded[p["id"]], files[p["id"]] = stamp, p["photo_file"]
                 save_state(state)
         except (OSError, anki_mod.AnkiError) as e:
             log.error("photo for %s failed: %s", p["name"], e)

@@ -218,6 +218,11 @@ direct image link) overrides the photo, since folk's API exposes no profile pict
 
 ## Gotchas learned
 
+- **A replaced photo needs a new filename.** Anki keeps showing its cached copy of an image for
+  as long as the filename is the same, even after the media file is overwritten (seen
+  2026-11-19: a 792 px file was in the media folder and the card still showed the 200 px one).
+  So the first photo is `folk-<id>.jpg` and any replacement is `folk-<id>-<hash>.jpg`
+  (`photo_files` in `state.json`); editing a local override in `photos/` counts as a replacement.
 - The folk person object has no picture field (checked 2026-11-07 against the API reference);
   only interaction participants carry a `picture`. Hence the Photo URL field and photos folder.
 - Google's iCal feed folds lines at 75 characters, so a naive regex sees email domains such as
