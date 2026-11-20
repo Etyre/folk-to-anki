@@ -216,6 +216,19 @@ direct image link) overrides the photo, since folk's API exposes no profile pict
 - The photo agent needs the `claude` CLI (`~/.local/bin/claude`) logged in; its usage is billed to
   that Claude account. The launchd plist puts `~/.local/bin` on PATH for this reason.
 
+## Strong rule: never delete a reviewed card
+
+Eli, 2026-11-19: "There should be a STRONG rule to never delete any card that has ever been
+reviewed." A review is spaced-repetition history that cannot be recovered. This binds the code
+and anyone (person or agent) working on the project by hand:
+
+- The daily run deletes nothing. Unwanted cards are suspended and tagged (`folk-stale`).
+- The only delete path is `Anki.delete_unreviewed` in `anki.py`. It checks every card of every
+  note and refuses the whole request if any has a review. `Anki.call` rejects the raw
+  `deleteNotes` / `deleteDecks` actions, so the check cannot be skipped by accident.
+- `test --cleanup` goes through the same check.
+- Do not delete through the Anki window or a direct AnkiConnect request to get around this.
+
 ## Card order and wording rules added 2026-11-19
 
 - **Member before staff.** A staffer's member of Congress is carded too, even outside the top-N

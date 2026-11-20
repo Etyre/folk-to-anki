@@ -1,5 +1,11 @@
 """AnkiConnect side: make sure the two note types and the decks exist, upload photos,
-and add-or-update notes by their Key field. Nothing here ever deletes a note."""
+and add-or-update notes by their Key field. The daily run never deletes a note.
+
+STRONG RULE (Eli, 2026-11-19): never delete any card that has ever been reviewed. A review is
+his spaced-repetition history and cannot be got back. Every delete goes through
+Anki.delete_unreviewed, which refuses if any card of any of the notes has a review; call()
+refuses the raw delete actions. An unwanted reviewed card is suspended and tagged instead.
+This holds for anyone working on this project by hand as well, not only for this code."""
 import base64
 import json
 import logging
@@ -34,7 +40,23 @@ class Anki:
     def __init__(self, url):
         self.url = url
 
-    def call(self, action, **params):
+    DELETES = ("deleteNotes", "deleteDecks", "removeEmptyNotes")
+
+    def delete_unreviewed(self, note_ids=(), deck=None):
+        """The only way to delete. Removes the given notes (or a whole deck) only if none of
+        their cards has ever been reviewed; otherwise deletes nothing and raises."""
+        cards = self.call("findCards", query=f'"deck:{deck}"' if deck else "nid:" + ",".join(map(str, note_ids)))
+        seen = [c for c in self.call("cardsInfo", cards=cards) if c["reps"] > 0] if cards else []
+        if seen:
+            raise AnkiError("refusing to delete: %d of the cards have been reviewed (notes %s). Suspend them instead."
+                            % (len(seen), sorted({c["note"] for c in seen})[:10]))
+        if deck:
+            return self.call("deleteDecks", _checked=True, decks=[deck], cardsToo=True)
+        return self.call("deleteNotes", _checked=True, notes=list(note_ids))
+
+    def call(self, action, _checked=False, **params):
+        if action in self.DELETES and not _checked:
+            raise AnkiError(f"{action} is not allowed directly; use delete_unreviewed (never delete a reviewed card)")
         req = urllib.request.Request(self.url, json.dumps({"action": action, "version": 6, "params": params}).encode(),
                                      {"Content-Type": "application/json"})
         try:

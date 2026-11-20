@@ -663,7 +663,7 @@ class FakeFolk:
 def run_test(cfg, anki, cleanup):
     if cleanup:
         log.info("deleting deck %r and its cards", TEST_DECK)
-        anki.call("deleteDecks", decks=[TEST_DECK], cardsToo=True)
+        anki.delete_unreviewed(deck=TEST_DECK)        # refuses if a test card was ever reviewed
         return
     global STATE
     STATE = Path(tempfile.mkdtemp(prefix="folk-to-anki-test-")) / "state.json"   # never the real state file
