@@ -142,6 +142,8 @@ class Anki:
                                        "fields": note["fields"], "tags": note["tags"],
                                        "options": {"allowDuplicate": True}})
             return "added"
+        if self.older(note):                       # should not happen; say so rather than hide it
+            log.warning("DUPLICATE: Eli has his own card for %s, and the tool's note %s exists too", note["key"], ids[0])
         if len(ids) > 1:
             log.warning("key %s matches %d notes; updating the first", note["key"], len(ids))
         info = self.call("notesInfo", notes=ids[:1])[0]

@@ -19,6 +19,7 @@ import hashlib
 import datetime as dt
 import json
 import logging
+import re
 import sys
 import tempfile
 import urllib.request
@@ -522,11 +523,35 @@ def make_cards(cfg, folk, congress, anki, decks, dry_run, state, finder=None):
     by_bioguide = {p["bioguide"]: p for p in people if p.get("bioguide")}
     people.sort(key=lambda p: p["kind"] != "Congressperson")   # members first, so their cards exist when staffers are held
 
-    def faces(x):                                  # the tool's face card for x, or Eli's own
+    forms = lambda leg: {f"{n} {leg['name']['last']}" for n in (leg["name"]["first"], leg["name"].get("nickname")) if n}
+    everyone = {}                                  # name form -> bioguide ids using it
+    for leg in congress.legislators:
+        for n in forms(leg) | {full_name(leg)}:
+            everyone.setdefault(n, set()).add(leg["id"]["bioguide"])
+
+    def aliases(x):
+        """Other names Eli's own cards may use for a member. The data often has no nickname
+        ("Don Beyer" is listed only as Donald S. Beyer, Jr.; the tool made him a second face card
+        on 2026-11-19), so besides first/nickname + last this looks at his cards: a hand-made
+        "Name: D... Beyer" card names this member unless that name is another legislator's."""
         leg = congress.match(x["name"]) if x["kind"] == "Congressperson" else None
-        names = [x["name"]] + ([f"{n} {leg['name']['last']}" for n in (leg["name"]["first"], leg["name"].get("nickname")) if n] if leg else [])
+        if not leg:
+            return []
+        found, n = forms(leg), leg["name"]
+        try:
+            ids = anki.call("findNotes", query='"Back:re:Name: %s[^<]* %s<" -"note:Folk Basic" -"note:Folk Cloze"'
+                            % (re.escape(n["first"][0]), re.escape(n["last"])))
+            for note in anki.call("notesInfo", notes=ids) if ids else []:
+                m = re.search(r"Name: ([^<]+)<", note["fields"].get("Back", {}).get("value", ""))
+                if m and not everyone.get(m.group(1).strip(), set()) - {leg["id"]["bioguide"]}:
+                    found.add(m.group(1).strip())
+        except anki_mod.AnkiError:
+            pass                                   # a dry run with Anki closed
+        return sorted(found - {x["name"]})
+
+    def faces(x):                                  # the tool's face card for x, or Eli's own
         return ['"Key:%s|photo"' % x["id"]] + [cards.q("Back", f"Name: {n}<") + ' -"note:Folk Basic" -"note:Folk Cloze"'
-                                                for n in names]
+                                                for n in [x["name"]] + aliases(x)]
     log.info("cards: %d people to card", len(people))
     counts = {"added": 0, "updated": 0, "unchanged": 0, "skipped": 0, "failed": 0}
     if not dry_run:
@@ -536,8 +561,7 @@ def make_cards(cfg, folk, congress, anki, decks, dry_run, state, finder=None):
     for p in people:
         leg = congress.match(p["name"]) if p["kind"] == "Congressperson" else None
         if leg:                                    # Eli's own cards may say "Don Beyer" for "Donald S. Beyer"
-            n = leg["name"]
-            p["aliases"] = [f"{f} {n['last']}" for f in (n["first"], n.get("nickname")) if f]
+            p["aliases"] = aliases(p)
         # A replaced photo is stored under a new filename (see cards.img). stamp = what was
         # uploaded: the URL, plus the file's modified time for a local override.
         stamp, files = p.get("photo_url"), state.setdefault("photo_files", {})

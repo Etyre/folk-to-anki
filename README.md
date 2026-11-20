@@ -225,6 +225,11 @@ direct image link) overrides the photo, since folk's API exposes no profile pict
 - **Leadership cards** read "Incoming Senate Minority Leader:" and "John Thune is the incoming
   {{c1::Senate Minority Leader}}." "Incoming" becomes "Current" by itself on the day that Congress
   convenes (`roles_start`). Parentheticals in the agent's titles are dropped, from the key as well.
+- **Eli's name for a member.** His cards say "Don Beyer"; the data says only "Donald S. Beyer,
+  Jr.", with no nickname, so the tool made a second set of Beyer cards (deleted the same day,
+  never reviewed). `aliases` in `make_cards` now also reads the name off any hand-made
+  "Name: D... Beyer" card, unless that name belongs to another legislator. If a tool note and
+  one of his cards ever coexist again, the log says `DUPLICATE:`.
 - **Outdated post cards** (post lost, or title reworded so the key changed) are suspended and
   tagged `folk-stale`, never deleted, and come back if the tool generates them again.
 
